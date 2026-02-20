@@ -16,7 +16,7 @@ async function findRecords(baseId: string, table: string, formula: string, maxRe
   const url = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(table)}?filterByFormula=${encodeURIComponent(formula)}&maxRecords=${maxRecords}`;
   const res = await fetch(url, { headers: HEADERS });
   if (!res.ok) throw new Error(`Airtable ${res.status}: ${await res.text()}`);
-  const data = await res.json();
+  const data: any = await res.json();
   return data.records || [];
 }
 

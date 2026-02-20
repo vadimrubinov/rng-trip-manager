@@ -13,8 +13,8 @@ pool.on("error", (err) => {
 });
 
 export async function query<T = any>(sql: string, params?: any[]): Promise<T[]> {
-  const result: QueryResult<T> = await pool.query(sql, params);
-  return result.rows;
+  const result = await pool.query(sql, params);
+  return result.rows as T[];
 }
 
 export async function queryOne<T = any>(sql: string, params?: any[]): Promise<T | null> {
