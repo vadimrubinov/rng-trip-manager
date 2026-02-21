@@ -295,3 +295,72 @@ tripsRouter.post("/generate-plan", async (req: Request, res: Response) => {
     res.status(500).json({ error: e?.message || "Internal server error" });
   }
 });
+
+// === GENERATE AND CREATE ===
+
+tripsRouter.post("/generate-and-create", async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req); if (!userId) return noAuth(res);
+    const { scoutId, tripDetails } = req.body;
+    if (!scoutId && !tripDetails) return res.status(400).json({ error: "scoutId or tripDetails required" });
+
+    // 1. Generate plan
+    const plan = await plannerService.generatePlan({ scoutId, tripDetails });
+
+    // 2. Create project
+    const project = await tripsService.create(userId, {
+      title: plan.project.title || "Untitled Trip",
+      scoutId,
+      description: plan.project.description,
+      region: plan.project.region,
+      country: plan.project.country,
+      latitude: plan.project.latitude,
+      longitude: plan.project.longitude,
+      dates_start: plan.project.datesStart,
+      dates_end: plan.project.datesEnd,
+      target_species: plan.project.targetSpecies,
+      trip_type: plan.project.tripType,
+      budget_min: plan.project.budgetMin,
+      budget_max: plan.project.budgetMax,
+      participants_count: plan.project.participantsCount,
+      experience_level: plan.project.experienceLevel,
+      itinerary: plan.project.itinerary,
+    });
+
+    // 3. Add organizer as participant
+    await participantsService.create(project.id, { name: "Organizer", userId, role: "organizer" });
+
+    // 4. Create tasks (batch)
+    const tasks = [];
+    for (const t of plan.tasks) {
+      const task = await tasksService.create(project.id, t);
+      tasks.push(task);
+    }
+
+    // 5. Create locations (batch)
+    const locations = [];
+    for (const loc of plan.locations) {
+      const location = await locationsService.create(project.id, loc);
+      locations.push(location);
+    }
+
+    // 6. Log event
+    await eventsService.log(project.id, "trip_created", "agent", userId, {
+      source: scoutId ? "scout" : "manual",
+      tasks_count: tasks.length,
+      locations_count: locations.length,
+    });
+
+    const tripUrl = `https://bitescout.com/trip/${project.slug}`;
+
+    res.status(201).json({
+      project,
+      tasks,
+      locations,
+      tripUrl,
+    });
+  } catch (e: any) {
+    console.error("[Trips] GenerateAndCreate:", e?.message);
+    res.status(500).json({ error: e?.message || "Internal server error" });
+  }
+});
