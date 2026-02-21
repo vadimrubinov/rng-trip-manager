@@ -6,5 +6,5 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npx tsc
 RUN npm prune --production
-EXPOSE 3000
+EXPOSE 10000
 CMD ["node", "dist/server.js"]

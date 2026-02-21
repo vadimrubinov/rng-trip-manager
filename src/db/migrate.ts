@@ -170,11 +170,28 @@ DO $$ BEGIN
 END $$;
 `;
 
+const EXPECTED_TABLES = [
+  "trip_templates", "trip_projects", "trip_participants",
+  "trip_tasks", "trip_events", "trip_media", "trip_locations"
+];
+
 export async function runMigrations(): Promise<void> {
   const client = await pool.connect();
   try {
+    // Check if tables already exist
+    const { rows } = await client.query(
+      `SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename = ANY($1)`,
+      [EXPECTED_TABLES]
+    );
+    const existingCount = rows.length;
+
     await client.query(DDL);
-    console.log("[DB] Migrations complete — 7 tables ready");
+
+    if (existingCount === EXPECTED_TABLES.length) {
+      console.log(`[DB] Tables already exist (${existingCount}/${EXPECTED_TABLES.length}), migration skipped`);
+    } else {
+      console.log(`[DB] Tables created (${existingCount} existed, ${EXPECTED_TABLES.length - existingCount} new)`);
+    }
   } catch (err: any) {
     console.error("[DB] Migration error:", err.message);
     throw err;
