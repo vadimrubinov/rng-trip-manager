@@ -9,12 +9,11 @@ import { plannerService } from "../services/planner.service";
 export const tripsRouter = Router();
 
 function getUserId(req: Request): string | null {
-  return (req as any).userId || null;
+  const { clerkUserId } = req.body;
+  return (clerkUserId && typeof clerkUserId === "string") ? clerkUserId : null;
 }
 
-function noAuth(res: Response) {
-  return res.status(401).json({ error: "Unauthorized" });
-}
+function noAuth(res: Response) { return res.status(401).json({ error: "clerkUserId required" }); }
 
 tripsRouter.post("/generate-and-create", async (req: Request, res: Response) => {
   try {
