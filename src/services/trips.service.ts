@@ -49,7 +49,7 @@ export const tripsService = {
     longitude?: number;
     datesStart?: string;
     datesEnd?: string;
-    targetSpecies?: string;
+    targetSpecies?: string | string[];
     tripType?: string;
     budgetMin?: number;
     budgetMax?: number;
@@ -73,7 +73,8 @@ export const tripsService = {
       RETURNING *`,
       [
         userId, data.scoutId, slug, data.title, data.description, data.region, data.country,
-        data.latitude, data.longitude, data.datesStart, data.datesEnd, data.targetSpecies,
+        data.latitude, data.longitude, data.datesStart, data.datesEnd,
+        Array.isArray(data.targetSpecies) ? data.targetSpecies : (data.targetSpecies ? data.targetSpecies.split(", ") : null),
         data.tripType, data.budgetMin, data.budgetMax, data.participantsCount,
         data.experienceLevel, JSON.stringify(data.itinerary || {}),
       ]
