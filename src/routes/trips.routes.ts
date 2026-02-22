@@ -1,373 +1,37 @@
 import { Router, Request, Response } from "express";
-import { tripsService } from "../services/trips.service";
+import { tripsService, TripProjectRow } from "../services/trips.service";
 import { tasksService } from "../services/tasks.service";
-import { eventsService } from "../services/events.service";
-import { participantsService } from "../services/participants.service";
 import { locationsService } from "../services/locations.service";
+import { participantsService } from "../services/participants.service";
+import { eventsService } from "../services/events.service";
 import { plannerService } from "../services/planner.service";
 
 export const tripsRouter = Router();
 
 function getUserId(req: Request): string | null {
-  const { clerkUserId } = req.body;
-  return (clerkUserId && typeof clerkUserId === "string") ? clerkUserId : null;
+  return (req as any).userId || null;
 }
 
-function noAuth(res: Response) { return res.status(401).json({ error: "clerkUserId required" }); }
-
-// === PROJECTS ===
-
-tripsRouter.post("/", async (req: Request, res: Response) => {
-  try {
-    const userId = getUserId(req); if (!userId) return noAuth(res);
-    if (!req.body.title) return res.status(400).json({ error: "title required" });
-
-    const project = await tripsService.create(userId, req.body);
-    await participantsService.create(project.id, { name: "Organizer", userId, role: "organizer" });
-    await eventsService.log(project.id, "trip_created", "user", userId, { title: project.title });
-
-    res.status(201).json(project);
-  } catch (e: any) {
-    console.error("[Trips] Create:", e?.message);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-tripsRouter.post("/list", async (req: Request, res: Response) => {
-  try {
-    const userId = getUserId(req); if (!userId) return noAuth(res);
-    const trips = await tripsService.list(userId, req.body.status, req.body.limit, req.body.offset);
-    res.json({ trips });
-  } catch (e: any) {
-    console.error("[Trips] List:", e?.message);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-tripsRouter.post("/detail", async (req: Request, res: Response) => {
-  try {
-    const userId = getUserId(req); if (!userId) return noAuth(res);
-    const { projectId } = req.body;
-    if (!projectId) return res.status(400).json({ error: "projectId required" });
-    if (!(await tripsService.verifyOwnership(projectId, userId))) return res.status(403).json({ error: "Access denied" });
-
-    const [project, tasks, participants, locations, recentEvents] = await Promise.all([
-      tripsService.getById(projectId),
-      tasksService.listByProject(projectId),
-      participantsService.listByProject(projectId),
-      locationsService.listByProject(projectId),
-      eventsService.listByProject(projectId, 20),
-    ]);
-    if (!project) return res.status(404).json({ error: "Not found" });
-
-    res.json({ project, tasks, participants, locations, recentEvents });
-  } catch (e: any) {
-    console.error("[Trips] Detail:", e?.message);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-tripsRouter.post("/update", async (req: Request, res: Response) => {
-  try {
-    const userId = getUserId(req); if (!userId) return noAuth(res);
-    const { projectId, clerkUserId, ...data } = req.body;
-    if (!projectId) return res.status(400).json({ error: "projectId required" });
-    if (!(await tripsService.verifyOwnership(projectId, userId))) return res.status(403).json({ error: "Access denied" });
-
-    const updated = await tripsService.update(projectId, data);
-    await eventsService.log(projectId, "trip_updated", "user", userId, { fields: Object.keys(data) });
-    res.json(updated);
-  } catch (e: any) {
-    console.error("[Trips] Update:", e?.message);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-tripsRouter.post("/delete", async (req: Request, res: Response) => {
-  try {
-    const userId = getUserId(req); if (!userId) return noAuth(res);
-    const { projectId } = req.body;
-    if (!projectId) return res.status(400).json({ error: "projectId required" });
-    if (!(await tripsService.verifyOwnership(projectId, userId))) return res.status(403).json({ error: "Access denied" });
-
-    await tripsService.delete(projectId);
-    await eventsService.log(projectId, "trip_cancelled", "user", userId);
-    res.json({ success: true });
-  } catch (e: any) {
-    console.error("[Trips] Delete:", e?.message);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-// === TASKS ===
-
-tripsRouter.post("/tasks/create", async (req: Request, res: Response) => {
-  try {
-    const userId = getUserId(req); if (!userId) return noAuth(res);
-    const { projectId, type, title } = req.body;
-    if (!projectId || !type || !title) return res.status(400).json({ error: "projectId, type, title required" });
-    if (!(await tripsService.verifyOwnership(projectId, userId))) return res.status(403).json({ error: "Access denied" });
-
-    const task = await tasksService.create(projectId, req.body);
-    await eventsService.log(projectId, "task_created", "user", userId, { task_id: task.id, title: task.title }, "task", task.id);
-    res.status(201).json(task);
-  } catch (e: any) {
-    console.error("[Tasks] Create:", e?.message);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-tripsRouter.post("/tasks/update", async (req: Request, res: Response) => {
-  try {
-    const userId = getUserId(req); if (!userId) return noAuth(res);
-    const { projectId, taskId, clerkUserId, ...data } = req.body;
-    if (!projectId || !taskId) return res.status(400).json({ error: "projectId, taskId required" });
-    if (!(await tripsService.verifyOwnership(projectId, userId))) return res.status(403).json({ error: "Access denied" });
-
-    const task = await tasksService.update(taskId, data);
-    await eventsService.log(projectId, "task_updated", "user", userId, { task_id: taskId }, "task", taskId);
-    res.json(task);
-  } catch (e: any) {
-    console.error("[Tasks] Update:", e?.message);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-tripsRouter.post("/tasks/complete", async (req: Request, res: Response) => {
-  try {
-    const userId = getUserId(req); if (!userId) return noAuth(res);
-    const { projectId, taskId } = req.body;
-    if (!projectId || !taskId) return res.status(400).json({ error: "projectId, taskId required" });
-    if (!(await tripsService.verifyOwnership(projectId, userId))) return res.status(403).json({ error: "Access denied" });
-
-    const task = await tasksService.complete(taskId);
-    await eventsService.log(projectId, "task_completed", "user", userId, { task_id: taskId, title: task?.title }, "task", taskId);
-    res.json(task);
-  } catch (e: any) {
-    console.error("[Tasks] Complete:", e?.message);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-tripsRouter.post("/tasks/delete", async (req: Request, res: Response) => {
-  try {
-    const userId = getUserId(req); if (!userId) return noAuth(res);
-    const { projectId, taskId } = req.body;
-    if (!projectId || !taskId) return res.status(400).json({ error: "projectId, taskId required" });
-    if (!(await tripsService.verifyOwnership(projectId, userId))) return res.status(403).json({ error: "Access denied" });
-
-    await tasksService.delete(taskId);
-    await eventsService.log(projectId, "task_deleted", "user", userId, { task_id: taskId }, "task", taskId);
-    res.json({ success: true });
-  } catch (e: any) {
-    console.error("[Tasks] Delete:", e?.message);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-// === EVENTS ===
-
-tripsRouter.post("/events", async (req: Request, res: Response) => {
-  try {
-    const userId = getUserId(req); if (!userId) return noAuth(res);
-    const { projectId } = req.body;
-    if (!projectId) return res.status(400).json({ error: "projectId required" });
-    if (!(await tripsService.verifyOwnership(projectId, userId))) return res.status(403).json({ error: "Access denied" });
-
-    const events = await eventsService.listByProject(projectId, req.body.limit || 50, req.body.offset || 0);
-    res.json({ events });
-  } catch (e: any) {
-    console.error("[Events] List:", e?.message);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-// === INVITE ===
-
-tripsRouter.post("/accept-invite", async (req: Request, res: Response) => {
-  try {
-    const { clerkUserId, inviteToken } = req.body;
-    if (!clerkUserId || !inviteToken) {
-      return res.status(400).json({ error: "clerkUserId and inviteToken required" });
-    }
-
-    const participant = await participantsService.getByInviteToken(inviteToken);
-    if (!participant) return res.status(404).json({ error: "Invite not found" });
-
-    const project = await tripsService.getById(participant.project_id);
-    if (!project) return res.status(404).json({ error: "Trip not found" });
-
-    // Idempotent: if already confirmed, just return
-    if (participant.status === "confirmed") {
-      return res.json({ participant, project: { slug: project.slug } });
-    }
-
-    const updated = await participantsService.acceptInvite(inviteToken, clerkUserId);
-    if (!updated) return res.status(400).json({ error: "Could not accept invite" });
-
-    await eventsService.log(
-      participant.project_id,
-      "participant_joined",
-      "user",
-      clerkUserId,
-      { name: participant.name },
-      "participant",
-      participant.id
-    );
-
-    res.json({ participant: updated, project: { slug: project.slug } });
-  } catch (e: any) {
-    console.error("[Trips] Accept invite:", e?.message);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-tripsRouter.post("/check-participant", async (req: Request, res: Response) => {
-  try {
-    const { clerkUserId, slug } = req.body;
-    if (!clerkUserId || !slug) {
-      return res.status(400).json({ error: "clerkUserId and slug required" });
-    }
-
-    const project = await tripsService.getBySlug(slug);
-    if (!project) return res.status(404).json({ error: "Trip not found" });
-
-    const participants = await participantsService.listByProject(project.id);
-    const isParticipant = participants.some(
-      (p) => p.user_id === clerkUserId && p.status === "confirmed"
-    );
-
-    res.json({ isParticipant, projectId: project.id });
-  } catch (e: any) {
-    console.error("[Trips] Check participant:", e?.message);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-// === PARTICIPANTS ===
-
-tripsRouter.post("/participants/create", async (req: Request, res: Response) => {
-  try {
-    const userId = getUserId(req); if (!userId) return noAuth(res);
-    const { projectId, name } = req.body;
-    if (!projectId || !name) return res.status(400).json({ error: "projectId, name required" });
-    if (!(await tripsService.verifyOwnership(projectId, userId))) return res.status(403).json({ error: "Access denied" });
-
-    const p = await participantsService.create(projectId, req.body);
-    await eventsService.log(projectId, "participant_invited", "user", userId, { name }, "participant", p.id);
-    res.status(201).json(p);
-  } catch (e: any) {
-    console.error("[Participants] Create:", e?.message);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-tripsRouter.post("/participants/update", async (req: Request, res: Response) => {
-  try {
-    const userId = getUserId(req); if (!userId) return noAuth(res);
-    const { projectId, participantId, clerkUserId, ...data } = req.body;
-    if (!projectId || !participantId) return res.status(400).json({ error: "projectId, participantId required" });
-    if (!(await tripsService.verifyOwnership(projectId, userId))) return res.status(403).json({ error: "Access denied" });
-
-    const p = await participantsService.update(participantId, data);
-    res.json(p);
-  } catch (e: any) {
-    console.error("[Participants] Update:", e?.message);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-tripsRouter.post("/participants/delete", async (req: Request, res: Response) => {
-  try {
-    const userId = getUserId(req); if (!userId) return noAuth(res);
-    const { projectId, participantId } = req.body;
-    if (!projectId || !participantId) return res.status(400).json({ error: "projectId, participantId required" });
-    if (!(await tripsService.verifyOwnership(projectId, userId))) return res.status(403).json({ error: "Access denied" });
-
-    await participantsService.delete(participantId);
-    res.json({ success: true });
-  } catch (e: any) {
-    console.error("[Participants] Delete:", e?.message);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-// === LOCATIONS ===
-
-tripsRouter.post("/locations/create", async (req: Request, res: Response) => {
-  try {
-    const userId = getUserId(req); if (!userId) return noAuth(res);
-    const { projectId, name, latitude, longitude } = req.body;
-    if (!projectId || !name || latitude === undefined || longitude === undefined) {
-      return res.status(400).json({ error: "projectId, name, latitude, longitude required" });
-    }
-    if (!(await tripsService.verifyOwnership(projectId, userId))) return res.status(403).json({ error: "Access denied" });
-
-    const loc = await locationsService.create(projectId, req.body);
-    await eventsService.log(projectId, "location_added", "user", userId, { name: loc.name }, "location", loc.id);
-    res.status(201).json(loc);
-  } catch (e: any) {
-    console.error("[Locations] Create:", e?.message);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-tripsRouter.post("/locations/update", async (req: Request, res: Response) => {
-  try {
-    const userId = getUserId(req); if (!userId) return noAuth(res);
-    const { projectId, locationId, clerkUserId, ...data } = req.body;
-    if (!projectId || !locationId) return res.status(400).json({ error: "projectId, locationId required" });
-    if (!(await tripsService.verifyOwnership(projectId, userId))) return res.status(403).json({ error: "Access denied" });
-
-    const loc = await locationsService.update(locationId, data);
-    res.json(loc);
-  } catch (e: any) {
-    console.error("[Locations] Update:", e?.message);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-tripsRouter.post("/locations/delete", async (req: Request, res: Response) => {
-  try {
-    const userId = getUserId(req); if (!userId) return noAuth(res);
-    const { projectId, locationId } = req.body;
-    if (!projectId || !locationId) return res.status(400).json({ error: "projectId, locationId required" });
-    if (!(await tripsService.verifyOwnership(projectId, userId))) return res.status(403).json({ error: "Access denied" });
-
-    await locationsService.delete(locationId);
-    res.json({ success: true });
-  } catch (e: any) {
-    console.error("[Locations] Delete:", e?.message);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-// === GENERATE PLAN ===
-
-tripsRouter.post("/generate-plan", async (req: Request, res: Response) => {
-  try {
-    const userId = getUserId(req); if (!userId) return noAuth(res);
-    const { scoutId, tripDetails } = req.body;
-    if (!scoutId && !tripDetails) return res.status(400).json({ error: "scoutId or tripDetails required" });
-
-    const plan = await plannerService.generatePlan({ scoutId, tripDetails });
-    res.json(plan);
-  } catch (e: any) {
-    console.error("[Planner] Generate:", e?.message);
-    res.status(500).json({ error: e?.message || "Internal server error" });
-  }
-});
-
-// === GENERATE AND CREATE ===
+function noAuth(res: Response) {
+  return res.status(401).json({ error: "Unauthorized" });
+}
 
 tripsRouter.post("/generate-and-create", async (req: Request, res: Response) => {
   try {
-    const userId = getUserId(req); if (!userId) return noAuth(res);
-    const { scoutId, tripDetails } = req.body;
-    if (!scoutId && !tripDetails) return res.status(400).json({ error: "scoutId or tripDetails required" });
+    const userId = getUserId(req);
+    if (!userId) return noAuth(res);
+
+    const { scoutId, tripDetails, brief, status: requestedStatus } = req.body;
+
+    // Accept brief as tripDetails alias
+    const effectiveTripDetails = tripDetails || brief;
+
+    if (!scoutId && !effectiveTripDetails) {
+      return res.status(400).json({ error: "scoutId or tripDetails/brief required" });
+    }
 
     // 1. Generate plan
-    const plan = await plannerService.generatePlan({ scoutId, tripDetails });
+    const plan = await plannerService.generatePlan({ scoutId, tripDetails: effectiveTripDetails });
 
     // 2. Create project
     const project = await tripsService.create(userId, {
@@ -389,24 +53,29 @@ tripsRouter.post("/generate-and-create", async (req: Request, res: Response) => 
       itinerary: plan.project.itinerary,
     });
 
-    // 3. Add organizer as participant
+    // 3. Set requested status (default is already 'draft' from DB)
+    if (requestedStatus && requestedStatus !== "draft") {
+      await tripsService.updateStatus(project.slug, requestedStatus);
+    }
+
+    // 4. Add organizer as participant
     await participantsService.create(project.id, { name: "Organizer", userId, role: "organizer" });
 
-    // 4. Create tasks (batch)
+    // 5. Create tasks (batch)
     const tasks = [];
     for (const t of plan.tasks) {
       const task = await tasksService.create(project.id, t);
       tasks.push(task);
     }
 
-    // 5. Create locations (batch)
+    // 6. Create locations (batch)
     const locations = [];
     for (const loc of plan.locations) {
       const location = await locationsService.create(project.id, loc);
       locations.push(location);
     }
 
-    // 6. Log event
+    // 7. Log event
     await eventsService.log(project.id, "trip_created", "agent", userId, {
       source: scoutId ? "scout" : "manual",
       tasks_count: tasks.length,
@@ -416,7 +85,7 @@ tripsRouter.post("/generate-and-create", async (req: Request, res: Response) => 
     const tripUrl = `https://bitescout.com/trip/${project.slug}`;
 
     res.status(201).json({
-      project,
+      project: { ...project, status: requestedStatus || project.status },
       tasks,
       locations,
       tripUrl,
@@ -424,5 +93,168 @@ tripsRouter.post("/generate-and-create", async (req: Request, res: Response) => 
   } catch (e: any) {
     console.error("[Trips] GenerateAndCreate:", e?.message);
     res.status(500).json({ error: e?.message || "Internal server error" });
+  }
+});
+
+tripsRouter.post("/generate-plan", async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return noAuth(res);
+
+    const { scoutId, tripDetails, brief } = req.body;
+    const effectiveTripDetails = tripDetails || brief;
+
+    if (!scoutId && !effectiveTripDetails) {
+      return res.status(400).json({ error: "scoutId or tripDetails/brief required" });
+    }
+
+    const plan = await plannerService.generatePlan({ scoutId, tripDetails: effectiveTripDetails });
+    res.json(plan);
+  } catch (e: any) {
+    console.error("[Trips] GeneratePlan:", e?.message);
+    res.status(500).json({ error: e?.message || "Internal server error" });
+  }
+});
+
+tripsRouter.post("/update-status", async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return noAuth(res);
+
+    const { slug, status, paymentStatus, paymentId } = req.body;
+    if (!slug || !status) {
+      return res.status(400).json({ error: "slug and status required" });
+    }
+
+    // Verify ownership
+    const project = await tripsService.getBySlug(slug);
+    if (!project) return res.status(404).json({ error: "Trip not found" });
+    if (project.user_id !== userId) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    const updated = await tripsService.updateStatus(slug, status, {
+      payment_status: paymentStatus,
+      payment_id: paymentId,
+    });
+
+    res.json(updated);
+  } catch (e: any) {
+    console.error("[Trips] UpdateStatus:", e?.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+tripsRouter.get("/list", async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return noAuth(res);
+
+    const projects = await tripsService.listByUser(userId);
+    res.json(projects);
+  } catch (e: any) {
+    console.error("[Trips] List:", e?.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+tripsRouter.get("/detail/:id", async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return noAuth(res);
+
+    const { id } = req.params;
+    const project = await tripsService.getById(id);
+
+    if (!project) return res.status(404).json({ error: "Trip not found" });
+    if (project.user_id !== userId) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    const [tasks, locations, participants] = await Promise.all([
+      tasksService.listByProject(id),
+      locationsService.listByProject(id),
+      participantsService.listByProject(id),
+    ]);
+
+    res.json({ project, tasks, locations, participants });
+  } catch (e: any) {
+    console.error("[Trips] Detail:", e?.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+tripsRouter.post("/update", async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return noAuth(res);
+
+    const { id, title, description, region, country, datesStart, datesEnd } = req.body;
+    if (!id) return res.status(400).json({ error: "id required" });
+
+    const project = await tripsService.getById(id);
+    if (!project) return res.status(404).json({ error: "Trip not found" });
+    if (project.user_id !== userId) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    const sets: string[] = ["updated_at = NOW()"];
+    const params: any[] = [];
+    let i = 1;
+
+    if (title !== undefined) {
+      params.push(title);
+      sets.push(`title = $${i++}`);
+    }
+    if (description !== undefined) {
+      params.push(description);
+      sets.push(`description = $${i++}`);
+    }
+    if (region !== undefined) {
+      params.push(region);
+      sets.push(`region = $${i++}`);
+    }
+    if (country !== undefined) {
+      params.push(country);
+      sets.push(`country = $${i++}`);
+    }
+    if (datesStart !== undefined) {
+      params.push(datesStart);
+      sets.push(`dates_start = $${i++}`);
+    }
+    if (datesEnd !== undefined) {
+      params.push(datesEnd);
+      sets.push(`dates_end = $${i++}`);
+    }
+
+    params.push(id);
+    const result = await tripsService.getById(id);
+
+    res.json(result);
+  } catch (e: any) {
+    console.error("[Trips] Update:", e?.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+tripsRouter.post("/delete", async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return noAuth(res);
+
+    const { id } = req.body;
+    if (!id) return res.status(400).json({ error: "id required" });
+
+    const project = await tripsService.getById(id);
+    if (!project) return res.status(404).json({ error: "Trip not found" });
+    if (project.user_id !== userId) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    await tripsService.delete(id);
+    res.json({ ok: true });
+  } catch (e: any) {
+    console.error("[Trips] Delete:", e?.message);
+    res.status(500).json({ error: "Internal server error" });
   }
 });

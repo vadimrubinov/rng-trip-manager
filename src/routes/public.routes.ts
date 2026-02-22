@@ -6,40 +6,6 @@ import { participantsService } from "../services/participants.service";
 
 export const publicRouter = Router();
 
-// Must be BEFORE /:slug to avoid route conflict
-publicRouter.get("/invite/:token", async (req: Request, res: Response) => {
-  try {
-    const { token } = req.params;
-    if (!token) return res.status(400).json({ error: "token required" });
-
-    const participant = await participantsService.getByInviteToken(token);
-    if (!participant) return res.status(404).json({ error: "Invite not found" });
-
-    const project = await tripsService.getById(participant.project_id);
-    if (!project || project.status === "cancelled") {
-      return res.status(404).json({ error: "Trip no longer available" });
-    }
-
-    res.json({
-      participant: {
-        name: participant.name,
-        status: participant.status,
-        role: participant.role,
-      },
-      project: {
-        slug: project.slug,
-        title: project.title,
-        region: project.region,
-        dates_start: project.dates_start,
-        dates_end: project.dates_end,
-      },
-    });
-  } catch (e: any) {
-    console.error("[Public] Invite lookup:", e?.message);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
 publicRouter.get("/:slug", async (req: Request, res: Response) => {
   try {
     const { slug } = req.params;
@@ -47,7 +13,17 @@ publicRouter.get("/:slug", async (req: Request, res: Response) => {
 
     const project = await tripsService.getBySlug(slug);
     if (!project) return res.status(404).json({ error: "Trip not found" });
-    if (project.status === "cancelled") return res.status(404).json({ error: "Trip not found" });
+    if (project.status === "cancelled") {
+      return res.status(404).json({ error: "Trip not found" });
+    }
+
+    // Draft trips: only visible to owner
+    if (project.status === "draft") {
+      const userId = req.query.userId as string;
+      if (!userId || userId !== project.user_id) {
+        return res.status(404).json({ error: "Trip not found" });
+      }
+    }
 
     const [tasks, locations, participantRows] = await Promise.all([
       tasksService.listByProject(project.id),
@@ -83,6 +59,7 @@ publicRouter.get("/:slug", async (req: Request, res: Response) => {
         description: project.description,
         cover_image_url: project.cover_image_url,
         status: project.status,
+        payment_status: project.payment_status,
         region: project.region,
         country: project.country,
         latitude: project.latitude,
@@ -104,6 +81,34 @@ publicRouter.get("/:slug", async (req: Request, res: Response) => {
     });
   } catch (e: any) {
     console.error("[Public] Get trip:", e?.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+publicRouter.get("/:slug/invite/:token", async (req: Request, res: Response) => {
+  try {
+    const { slug, token } = req.params;
+
+    const project = await tripsService.getBySlug(slug);
+    if (!project) return res.status(404).json({ error: "Trip not found" });
+
+    const participant = await participantsService.getByInviteToken(token);
+    if (!participant) return res.status(404).json({ error: "Invalid invite" });
+    if (participant.project_id !== project.id) {
+      return res.status(404).json({ error: "Invalid invite" });
+    }
+
+    const tasks = await tasksService.listByProject(project.id);
+    const locations = await locationsService.listByProject(project.id);
+
+    res.json({
+      project,
+      participant,
+      tasks,
+      locations,
+    });
+  } catch (e: any) {
+    console.error("[Public] Get invite:", e?.message);
     res.status(500).json({ error: "Internal server error" });
   }
 });
