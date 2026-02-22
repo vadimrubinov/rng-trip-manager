@@ -49,9 +49,10 @@ publicRouter.get("/:slug", async (req: Request, res: Response) => {
     if (!project) return res.status(404).json({ error: "Trip not found" });
     if (project.status === "cancelled") return res.status(404).json({ error: "Trip not found" });
 
-    const [tasks, locations] = await Promise.all([
+    const [tasks, locations, participantRows] = await Promise.all([
       tasksService.listByProject(project.id),
       locationsService.listByProject(project.id),
+      participantsService.listByProject(project.id),
     ]);
 
     const publicTasks = tasks.map(t => ({
@@ -64,6 +65,15 @@ publicRouter.get("/:slug", async (req: Request, res: Response) => {
       sort_order: t.sort_order,
       vendor_name: t.vendor_name,
     }));
+
+    const publicParticipants = participantRows
+      .filter(p => p.status !== "declined")
+      .map(p => ({
+        id: p.id,
+        name: p.name,
+        role: p.role,
+        status: p.status,
+      }));
 
     res.json({
       project: {
@@ -90,6 +100,7 @@ publicRouter.get("/:slug", async (req: Request, res: Response) => {
       },
       tasks: publicTasks,
       locations,
+      participants: publicParticipants,
     });
   } catch (e: any) {
     console.error("[Public] Get trip:", e?.message);
