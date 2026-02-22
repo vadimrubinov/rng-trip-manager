@@ -2,8 +2,43 @@ import { Router, Request, Response } from "express";
 import { tripsService } from "../services/trips.service";
 import { tasksService } from "../services/tasks.service";
 import { locationsService } from "../services/locations.service";
+import { participantsService } from "../services/participants.service";
 
 export const publicRouter = Router();
+
+// Must be BEFORE /:slug to avoid route conflict
+publicRouter.get("/invite/:token", async (req: Request, res: Response) => {
+  try {
+    const { token } = req.params;
+    if (!token) return res.status(400).json({ error: "token required" });
+
+    const participant = await participantsService.getByInviteToken(token);
+    if (!participant) return res.status(404).json({ error: "Invite not found" });
+
+    const project = await tripsService.getById(participant.project_id);
+    if (!project || project.status === "cancelled") {
+      return res.status(404).json({ error: "Trip no longer available" });
+    }
+
+    res.json({
+      participant: {
+        name: participant.name,
+        status: participant.status,
+        role: participant.role,
+      },
+      project: {
+        slug: project.slug,
+        title: project.title,
+        region: project.region,
+        dates_start: project.dates_start,
+        dates_end: project.dates_end,
+      },
+    });
+  } catch (e: any) {
+    console.error("[Public] Invite lookup:", e?.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 publicRouter.get("/:slug", async (req: Request, res: Response) => {
   try {

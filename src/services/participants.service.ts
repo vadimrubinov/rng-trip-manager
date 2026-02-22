@@ -30,6 +30,20 @@ export const participantsService = {
     return queryOne(`UPDATE trip_participants SET ${sets.join(",")} WHERE id=$${i} RETURNING *`, params);
   },
 
+  async getByInviteToken(token: string): Promise<TripParticipantRow | null> {
+    return queryOne("SELECT * FROM trip_participants WHERE invite_token = $1", [token]);
+  },
+
+  async acceptInvite(token: string, userId: string): Promise<TripParticipantRow | null> {
+    return queryOne(
+      `UPDATE trip_participants
+       SET user_id = $1, status = 'confirmed', joined_at = NOW()
+       WHERE invite_token = $2 AND status != 'declined'
+       RETURNING *`,
+      [userId, token]
+    );
+  },
+
   async delete(id: string): Promise<boolean> {
     return (await execute("DELETE FROM trip_participants WHERE id=$1", [id])) > 0;
   },

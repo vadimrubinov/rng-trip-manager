@@ -182,6 +182,68 @@ tripsRouter.post("/events", async (req: Request, res: Response) => {
   }
 });
 
+// === INVITE ===
+
+tripsRouter.post("/accept-invite", async (req: Request, res: Response) => {
+  try {
+    const { clerkUserId, inviteToken } = req.body;
+    if (!clerkUserId || !inviteToken) {
+      return res.status(400).json({ error: "clerkUserId and inviteToken required" });
+    }
+
+    const participant = await participantsService.getByInviteToken(inviteToken);
+    if (!participant) return res.status(404).json({ error: "Invite not found" });
+
+    const project = await tripsService.getById(participant.project_id);
+    if (!project) return res.status(404).json({ error: "Trip not found" });
+
+    // Idempotent: if already confirmed, just return
+    if (participant.status === "confirmed") {
+      return res.json({ participant, project: { slug: project.slug } });
+    }
+
+    const updated = await participantsService.acceptInvite(inviteToken, clerkUserId);
+    if (!updated) return res.status(400).json({ error: "Could not accept invite" });
+
+    await eventsService.log(
+      participant.project_id,
+      "participant_joined",
+      "user",
+      clerkUserId,
+      { name: participant.name },
+      "participant",
+      participant.id
+    );
+
+    res.json({ participant: updated, project: { slug: project.slug } });
+  } catch (e: any) {
+    console.error("[Trips] Accept invite:", e?.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+tripsRouter.post("/check-participant", async (req: Request, res: Response) => {
+  try {
+    const { clerkUserId, slug } = req.body;
+    if (!clerkUserId || !slug) {
+      return res.status(400).json({ error: "clerkUserId and slug required" });
+    }
+
+    const project = await tripsService.getBySlug(slug);
+    if (!project) return res.status(404).json({ error: "Trip not found" });
+
+    const participants = await participantsService.listByProject(project.id);
+    const isParticipant = participants.some(
+      (p) => p.user_id === clerkUserId && p.status === "confirmed"
+    );
+
+    res.json({ isParticipant, projectId: project.id });
+  } catch (e: any) {
+    console.error("[Trips] Check participant:", e?.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // === PARTICIPANTS ===
 
 tripsRouter.post("/participants/create", async (req: Request, res: Response) => {
