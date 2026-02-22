@@ -1,7 +1,6 @@
 import React from "react";
 import { render } from "@react-email/render";
 import { Layout } from "./templates/Layout";
-import { Section } from "@react-email/components";
 
 /**
  * Wraps raw body HTML from Airtable template in the branded Layout
@@ -11,7 +10,8 @@ export async function renderEmail(bodyHtml: string): Promise<string> {
   const element = React.createElement(
     Layout,
     null,
-    React.createElement(Section, {
+    // Use plain div with dangerouslySetInnerHTML (React Email Section doesn't support it)
+    React.createElement("div", {
       dangerouslySetInnerHTML: { __html: bodyHtml },
     })
   );
