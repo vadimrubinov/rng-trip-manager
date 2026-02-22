@@ -88,7 +88,7 @@ export const emailService = {
       const bodyHtml = interpolateVariables(template.bodyHtml, variables);
 
       // Wrap in branded layout
-      const html = renderEmail(bodyHtml);
+      const html = await renderEmail(bodyHtml);
 
       const fromAddr = `${settings.EMAIL_FROM_NAME || "BiteScout"} <${settings.EMAIL_FROM_ADDRESS || "noreply@bitescout.com"}>`;
       const replyTo = settings.EMAIL_REPLY_TO || undefined;
@@ -114,7 +114,7 @@ export const emailService = {
       }
 
       const bodyHtml = interpolateVariables(template.bodyHtml, variables);
-      const html = renderEmail(bodyHtml);
+      const html = await renderEmail(bodyHtml);
       return { html };
     } catch (err: any) {
       return { error: err?.message || "Render error" };

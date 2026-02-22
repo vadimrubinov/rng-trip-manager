@@ -7,7 +7,7 @@ import { Section } from "@react-email/components";
  * Wraps raw body HTML from Airtable template in the branded Layout
  * and renders to a full HTML email string.
  */
-export function renderEmail(bodyHtml: string): string {
+export async function renderEmail(bodyHtml: string): Promise<string> {
   const element = React.createElement(
     Layout,
     null,
@@ -16,8 +16,7 @@ export function renderEmail(bodyHtml: string): string {
     })
   );
 
-  // @react-email/render sync mode (CommonJS-compatible)
-  return render(element) as unknown as string;
+  return await render(element);
 }
 
 /**
