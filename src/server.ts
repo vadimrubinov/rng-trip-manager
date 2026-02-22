@@ -3,6 +3,7 @@ import cors from "cors";
 import { ENV } from "./config/env";
 import { tripsRouter } from "./routes/trips.routes";
 import { publicRouter } from "./routes/public.routes";
+import { emailRouter } from "./routes/email.routes";
 import { requireApiSecret } from "./middleware/auth";
 import { runMigrations } from "./db/migrate";
 import { pool } from "./db/pool";
@@ -63,7 +64,7 @@ async function main() {
 
   // Health check (no auth)
   app.get("/health", (_req, res) => {
-    res.json({ status: "ok", service: "rng-trip-manager", version: "1.1.0" });
+    res.json({ status: "ok", service: "rng-trip-manager", version: "1.2.0" });
   });
 
   // Public routes (no auth — for landing page)
@@ -72,9 +73,12 @@ async function main() {
   // Protected routes (require x-api-secret from bitescout-web)
   app.use("/api/trips", requireApiSecret, tripsRouter);
 
+  // Email routes (protected)
+  app.use("/api/email", requireApiSecret, emailRouter);
+
   const PORT = ENV.PORT;
   app.listen(PORT, () => {
-    console.log(`[rng-trip-manager] v1.1.0 listening on :${PORT}`);
+    console.log(`[rng-trip-manager] v1.2.0 listening on :${PORT}`);
 
     // Draft cleanup cron — every 60 minutes
     const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;

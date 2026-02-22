@@ -5,6 +5,9 @@ import { locationsService } from "../services/locations.service";
 import { participantsService } from "../services/participants.service";
 import { eventsService } from "../services/events.service";
 import { plannerService } from "../services/planner.service";
+import { emailService } from "../services/email/email.service";
+import { query, queryOne, execute } from "../db/pool";
+import { TripParticipantRow } from "../types";
 
 export const tripsRouter = Router();
 
@@ -14,6 +17,18 @@ function getUserId(req: Request): string | null {
 }
 
 function noAuth(res: Response) { return res.status(401).json({ error: "clerkUserId required" }); }
+
+function formatDates(start: string | null | undefined, end: string | null | undefined): string {
+  if (!start) return "Dates TBD";
+  const opts: Intl.DateTimeFormatOptions = { month: "long", day: "numeric", year: "numeric" };
+  const s = new Date(start);
+  if (!end) return s.toLocaleDateString("en-US", opts);
+  const e = new Date(end);
+  if (s.getMonth() === e.getMonth() && s.getFullYear() === e.getFullYear()) {
+    return `${s.toLocaleDateString("en-US", { month: "long" })} ${s.getDate()}-${e.getDate()}, ${s.getFullYear()}`;
+  }
+  return `${s.toLocaleDateString("en-US", opts)} - ${e.toLocaleDateString("en-US", opts)}`;
+}
 
 tripsRouter.post("/generate-and-create", async (req: Request, res: Response) => {
   try {
@@ -137,10 +152,122 @@ tripsRouter.post("/update-status", async (req: Request, res: Response) => {
       payment_id: paymentId,
     });
 
+    // Send confirmation email when trip is paid/activated
+    if (paymentStatus === "paid" || status === "active") {
+      (async () => {
+        try {
+          const organizer = await queryOne<TripParticipantRow>(
+            "SELECT * FROM trip_participants WHERE project_id = $1 AND role = 'organizer' LIMIT 1",
+            [project.id]
+          );
+          if (organizer?.email) {
+            const variables: Record<string, string> = {
+              trip_title: project.title || "Fishing Trip",
+              organizer_name: organizer.name || "Organizer",
+              destination: project.region || project.country || "TBD",
+              dates: formatDates(project.dates_start, project.dates_end),
+              trip_url: `https://bitescout.com/trip/${project.slug}`,
+            };
+            const result = await emailService.sendTemplate("trip_confirmation", organizer.email, variables);
+            await eventsService.log(
+              project.id,
+              result.success ? "email_sent" : "email_failed",
+              "system",
+              null,
+              { template_key: "trip_confirmation", to: organizer.email, messageId: result.messageId, error: result.error }
+            );
+          }
+        } catch (err: any) {
+          console.error("[Trips] Confirmation email error:", err?.message);
+        }
+      })();
+    }
+
     res.json(updated);
   } catch (e: any) {
     console.error("[Trips] UpdateStatus:", e?.message);
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Batch send invitations
+tripsRouter.post("/invitations/send-all", async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return noAuth(res);
+
+    const { projectId } = req.body;
+    if (!projectId) return res.status(400).json({ error: "projectId required" });
+
+    // Verify ownership
+    const project = await queryOne<TripProjectRow>(
+      "SELECT * FROM trip_projects WHERE id = $1",
+      [projectId]
+    );
+    if (!project) return res.status(404).json({ error: "Trip not found" });
+    if (project.user_id !== userId) return res.status(403).json({ error: "Forbidden" });
+
+    // Find unsent invitations
+    const participants = await query<TripParticipantRow>(
+      `SELECT * FROM trip_participants 
+       WHERE project_id = $1 AND status = 'invited' AND email IS NOT NULL AND invite_sent_at IS NULL AND role != 'organizer'`,
+      [projectId]
+    );
+
+    const organizer = await queryOne<TripParticipantRow>(
+      "SELECT * FROM trip_participants WHERE project_id = $1 AND role = 'organizer' LIMIT 1",
+      [projectId]
+    );
+
+    let sent = 0;
+    let failed = 0;
+    const errors: Array<{ participantId: string; error: string }> = [];
+
+    for (const p of participants) {
+      const variables: Record<string, string> = {
+        trip_title: project.title || "Fishing Trip",
+        organizer_name: organizer?.name || "The organizer",
+        destination: project.region || project.country || "TBD",
+        dates: formatDates(project.dates_start, project.dates_end),
+        invite_link: `https://bitescout.com/trip/${project.slug}?token=${p.invite_token || ""}`,
+        trip_url: `https://bitescout.com/trip/${project.slug}`,
+      };
+
+      const result = await emailService.sendTemplate("trip_invitation", p.email!, variables);
+
+      await eventsService.log(
+        projectId,
+        result.success ? "email_sent" : "email_failed",
+        "system",
+        null,
+        { template_key: "trip_invitation", to: p.email, messageId: result.messageId, error: result.error },
+        "participant",
+        p.id
+      );
+
+      if (result.success) {
+        sent++;
+        await execute("UPDATE trip_participants SET invite_sent_at = NOW() WHERE id = $1", [p.id]);
+
+        // CC organizer
+        if (organizer?.email) {
+          try {
+            const settings = await emailService.loadSettings();
+            if (settings.EMAIL_CC_ORGANIZER === "true") {
+              await emailService.sendTemplate("trip_invitation", organizer.email, variables);
+            }
+          } catch {}
+        }
+      } else {
+        failed++;
+        errors.push({ participantId: p.id, error: result.error || "Unknown" });
+      }
+    }
+
+    res.json({ sent, failed, errors });
+  } catch (e: any) {
+    console.error("[Trips] SendAll:", e?.message);
+    res.status(500).json({ error: e?.message || "Internal server error" });
   }
 });
 
