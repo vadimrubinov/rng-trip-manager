@@ -64,7 +64,7 @@ export const tripsService = {
       .replace(/^-+|-+$/g, "");
     const slug = `${slugBase}-${Math.random().toString(36).substr(2, 6)}`;
 
-    return queryOne(
+    const row = await queryOne(
       `INSERT INTO trip_projects (
         user_id, scout_id, slug, title, description, region, country, latitude, longitude,
         dates_start, dates_end, target_species, trip_type, budget_min, budget_max,
@@ -78,6 +78,8 @@ export const tripsService = {
         data.experienceLevel, JSON.stringify(data.itinerary || {}),
       ]
     );
+    if (!row) throw new Error("Failed to create trip project");
+    return row;
   },
 
   async getBySlug(slug: string): Promise<TripProjectRow | null> {

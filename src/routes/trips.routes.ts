@@ -44,7 +44,7 @@ tripsRouter.post("/generate-and-create", async (req: Request, res: Response) => 
       longitude: plan.project.longitude,
       datesStart: plan.project.datesStart,
       datesEnd: plan.project.datesEnd,
-      targetSpecies: plan.project.targetSpecies,
+      targetSpecies: Array.isArray(plan.project.targetSpecies) ? plan.project.targetSpecies.join(", ") : plan.project.targetSpecies,
       tripType: plan.project.tripType,
       budgetMin: plan.project.budgetMin,
       budgetMax: plan.project.budgetMax,

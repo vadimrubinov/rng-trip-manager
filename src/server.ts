@@ -14,7 +14,7 @@ async function getAirtableSetting(key: string, defaultValue: string): Promise<st
     const resp = await fetch(url, {
       headers: { Authorization: `Bearer ${ENV.AIRTABLE_API_KEY}` },
     });
-    const data = await resp.json();
+    const data: any = await resp.json();
     if (data.records && data.records.length > 0) {
       return data.records[0].fields.value || defaultValue;
     }
