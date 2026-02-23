@@ -96,4 +96,37 @@ export const vendorInquiryService = {
       params
     );
   },
+
+  async updateReply(id: string, data: {
+    replyText: string | null;
+    replyFrom: string;
+    replyRawHtml?: string | null;
+    resendInboundEmailId?: string;
+    classification?: string | null;
+    summary?: string | null;
+  }) {
+    return queryOne(
+      `UPDATE trip_vendor_inquiries SET
+         status='replied', replied_at=NOW(),
+         reply_text=$2, reply_from=$3, reply_raw_html=$4,
+         resend_inbound_email_id=$5, reply_classification=$6, reply_summary=$7
+       WHERE id=$1 RETURNING *`,
+      [
+        id,
+        data.replyText,
+        data.replyFrom,
+        data.replyRawHtml || null,
+        data.resendInboundEmailId || null,
+        data.classification || null,
+        data.summary || null,
+      ]
+    );
+  },
+
+  async findByResendInboundEmailId(emailId: string) {
+    return queryOne(
+      `SELECT * FROM trip_vendor_inquiries WHERE resend_inbound_email_id=$1`,
+      [emailId]
+    );
+  },
 };

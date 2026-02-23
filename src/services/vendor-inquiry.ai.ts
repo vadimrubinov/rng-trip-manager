@@ -72,3 +72,79 @@ export async function generateVendorInquiry(ctx: InquiryContext): Promise<Genera
     body: parsed.body || text,
   };
 }
+
+// --- Vendor Reply Classifier ---
+
+const FALLBACK_CLASSIFIER_PROMPT = `You are a fishing charter inquiry classifier. Analyze the vendor's reply to a customer inquiry and classify it.
+
+Input: The vendor's reply text and the original inquiry for context.
+
+Output ONLY valid JSON (no markdown, no backticks):
+{
+  "classification": "confirmed" | "declined" | "need_info" | "pricing" | "other",
+  "summary": "1-2 sentence summary of the vendor's response",
+  "suggestedAction": "recommended next step for the customer"
+}
+
+Classification rules:
+- "confirmed": Vendor confirms availability, provides booking details, says yes
+- "declined": Vendor says they're fully booked, unavailable, or cannot accommodate
+- "need_info": Vendor asks for more details (dates, group size, preferences)
+- "pricing": Vendor provides pricing, quotes, or rate information
+- "other": Auto-reply, out-of-office, unrelated, or unclear response`;
+
+export interface ReplyClassification {
+  classification: "confirmed" | "declined" | "need_info" | "pricing" | "other";
+  summary: string;
+  suggestedAction: string;
+}
+
+export async function classifyVendorReply(ctx: {
+  replyText: string;
+  originalSubject: string;
+  originalBody: string;
+  vendorName: string;
+}): Promise<ReplyClassification> {
+  const fallback: ReplyClassification = {
+    classification: "other",
+    summary: ctx.replyText.slice(0, 200),
+    suggestedAction: "Review manually",
+  };
+
+  try {
+    let systemPrompt = await airtable.getPrompt("vendor_reply_classifier");
+    if (!systemPrompt) {
+      console.warn("[VendorReply AI] Prompt not found in Airtable, using fallback");
+      systemPrompt = FALLBACK_CLASSIFIER_PROMPT;
+    }
+
+    const userMessage = [
+      `Vendor: ${ctx.vendorName}`,
+      `Original inquiry subject: ${ctx.originalSubject}`,
+      `Original inquiry body:\n${ctx.originalBody}`,
+      `\nVendor's reply:\n${ctx.replyText}`,
+    ].join("\n");
+
+    const response = await openaiClient.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0.2,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMessage },
+      ],
+    });
+
+    const text = response.choices[0]?.message?.content || "";
+    const parsed = JSON.parse(text.replace(/```json\n?|```\n?/g, "").trim());
+
+    const validClassifications = ["confirmed", "declined", "need_info", "pricing", "other"];
+    return {
+      classification: validClassifications.includes(parsed.classification) ? parsed.classification : "other",
+      summary: parsed.summary || ctx.replyText.slice(0, 200),
+      suggestedAction: parsed.suggestedAction || "Review manually",
+    };
+  } catch (err: any) {
+    console.error("[VendorReply AI] Classification error:", err?.message);
+    return fallback;
+  }
+}

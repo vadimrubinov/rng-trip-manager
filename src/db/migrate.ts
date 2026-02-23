@@ -195,6 +195,12 @@ CREATE TABLE IF NOT EXISTS trip_vendor_inquiries (
 CREATE INDEX IF NOT EXISTS idx_vendor_inquiries_project ON trip_vendor_inquiries(project_id);
 CREATE INDEX IF NOT EXISTS idx_vendor_inquiries_status ON trip_vendor_inquiries(status);
 
+-- v1.6.0: vendor inbox
+ALTER TABLE trip_vendor_inquiries ADD COLUMN IF NOT EXISTS reply_classification TEXT;
+ALTER TABLE trip_vendor_inquiries ADD COLUMN IF NOT EXISTS reply_summary TEXT;
+ALTER TABLE trip_vendor_inquiries ADD COLUMN IF NOT EXISTS reply_raw_html TEXT;
+ALTER TABLE trip_vendor_inquiries ADD COLUMN IF NOT EXISTS resend_inbound_email_id TEXT;
+
 CREATE OR REPLACE FUNCTION update_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN NEW.updated_at = NOW(); RETURN NEW; END;

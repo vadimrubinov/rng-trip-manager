@@ -1,6 +1,6 @@
 {
   "name": "rng-trip-manager",
-  "version": "1.2.0",
+  "version": "1.6.0",
   "description": "BiteScout Trip Manager",
   "scripts": {
     "build": "npx tsc",
@@ -14,7 +14,7 @@
     "nanoid": "^3.3.7",
     "openai": "^4.52.0",
     "dotenv": "^16.4.5",
-    "resend": "^4.0.0",
+    "resend": "^6.0.0",
     "@react-email/components": "^0.0.30",
     "@react-email/render": "^1.0.0",
     "react": "^19.0.0",

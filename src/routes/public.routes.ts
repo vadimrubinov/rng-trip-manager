@@ -3,6 +3,7 @@ import { tripsService } from "../services/trips.service";
 import { tasksService } from "../services/tasks.service";
 import { locationsService } from "../services/locations.service";
 import { participantsService } from "../services/participants.service";
+import { vendorInquiryService } from "../services/vendor-inquiry.service";
 
 export const publicRouter = Router();
 
@@ -30,6 +31,9 @@ publicRouter.get("/:slug", async (req: Request, res: Response) => {
       locationsService.listByProject(project.id),
       participantsService.listByProject(project.id),
     ]);
+
+    // Vendor inquiries (limited fields for public route)
+    const inquiries = await vendorInquiryService.listByProject(project.id);
 
     const publicTasks = tasks.map(t => ({
       id: t.id,
@@ -79,6 +83,16 @@ publicRouter.get("/:slug", async (req: Request, res: Response) => {
       tasks: publicTasks,
       locations,
       participants: publicParticipants,
+      vendor_inquiries: inquiries.map((i: any) => ({
+        id: i.id,
+        vendor_record_id: i.vendor_record_id,
+        vendor_name: i.vendor_name,
+        status: i.status,
+        sent_at: i.sent_at,
+        replied_at: i.replied_at,
+        reply_classification: i.reply_classification,
+        reply_summary: i.reply_summary,
+      })),
     });
   } catch (e: any) {
     console.error("[Public] Get trip:", e?.message);

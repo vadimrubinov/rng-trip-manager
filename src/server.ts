@@ -6,6 +6,7 @@ import { publicRouter } from "./routes/public.routes";
 import { emailRouter } from "./routes/email.routes";
 import { nudgeRouter } from "./routes/nudge.routes";
 import { vendorRouter } from "./routes/vendor.routes";
+import { webhookRouter } from "./routes/webhook.routes";
 import { nudgeService } from "./services/nudge/nudge.service";
 import { requireApiSecret } from "./middleware/auth";
 import { runMigrations } from "./db/migrate";
@@ -55,6 +56,14 @@ async function main() {
   await runMigrations();
 
   const app = express();
+
+  // Capture raw body for webhook signature verification — MUST be before express.json()
+  app.use("/api/webhooks", express.json({
+    verify: (req: any, _res, buf) => {
+      req.rawBody = buf.toString("utf-8");
+    }
+  }));
+
   app.use(express.json());
 
   const allowedOrigins = ENV.CORS_ORIGINS.split(",").map(s => s.trim());
@@ -67,11 +76,14 @@ async function main() {
 
   // Health check (no auth)
   app.get("/health", (_req, res) => {
-    res.json({ status: "ok", service: "rng-trip-manager", version: "1.5.0" });
+    res.json({ status: "ok", service: "rng-trip-manager", version: "1.6.0" });
   });
 
   // Public routes (no auth — for landing page)
   app.use("/api/public/trip", publicRouter);
+
+  // Webhook routes (no auth — verified by signature)
+  app.use("/api/webhooks", webhookRouter);
 
   // Protected routes (require x-api-secret from bitescout-web)
   app.use("/api/trips", requireApiSecret, tripsRouter);
@@ -87,7 +99,7 @@ async function main() {
 
   const PORT = ENV.PORT;
   app.listen(PORT, () => {
-    console.log(`[rng-trip-manager] v1.5.0 listening on :${PORT}`);
+    console.log(`[rng-trip-manager] v1.6.0 listening on :${PORT}`);
 
     // Draft cleanup cron — every 60 minutes
     const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
