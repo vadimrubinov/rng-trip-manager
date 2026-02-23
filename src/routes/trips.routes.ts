@@ -133,18 +133,20 @@ tripsRouter.post("/generate-plan", async (req: Request, res: Response) => {
 
 tripsRouter.post("/update-status", async (req: Request, res: Response) => {
   try {
+    const isServerCall = !!req.headers["x-api-secret"];
     const userId = getUserId(req);
-    if (!userId) return noAuth(res);
+    if (!isServerCall && !userId) return noAuth(res);
 
     const { slug, status, paymentStatus, paymentId } = req.body;
     if (!slug || !status) {
       return res.status(400).json({ error: "slug and status required" });
     }
 
-    // Verify ownership
     const project = await tripsService.getBySlug(slug);
     if (!project) return res.status(404).json({ error: "Trip not found" });
-    if (project.user_id !== userId) {
+
+    // Verify ownership for user calls; server calls are trusted (already auth'd by requireApiSecret)
+    if (!isServerCall && project.user_id !== userId) {
       return res.status(403).json({ error: "Forbidden" });
     }
 
