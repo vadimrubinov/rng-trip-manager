@@ -66,7 +66,7 @@ async function main() {
 
   // Health check (no auth)
   app.get("/health", (_req, res) => {
-    res.json({ status: "ok", service: "rng-trip-manager", version: "1.3.0" });
+    res.json({ status: "ok", service: "rng-trip-manager", version: "1.4.0" });
   });
 
   // Public routes (no auth — for landing page)
@@ -83,7 +83,7 @@ async function main() {
 
   const PORT = ENV.PORT;
   app.listen(PORT, () => {
-    console.log(`[rng-trip-manager] v1.3.0 listening on :${PORT}`);
+    console.log(`[rng-trip-manager] v1.4.0 listening on :${PORT}`);
 
     // Draft cleanup cron — every 60 minutes
     const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;

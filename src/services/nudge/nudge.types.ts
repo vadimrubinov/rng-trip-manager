@@ -30,6 +30,7 @@ export interface NotificationRecord {
   error: string | null;
   metadata: Record<string, any>;
   created_at: string;
+  read_at: string | null;
 }
 
 export interface NudgeSettings {

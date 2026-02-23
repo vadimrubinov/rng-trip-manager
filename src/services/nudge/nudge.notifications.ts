@@ -105,4 +105,68 @@ export const nudgeNotifications = {
       [projectId, limit]
     );
   },
+
+  /**
+   * List notifications for a user across all their trips (via trip_participants.user_id).
+   * Only returns sent/pending in_app notifications.
+   */
+  async listByUser(userId: string, limit: number = 50): Promise<(NotificationRecord & { project_title: string; project_slug: string })[]> {
+    return query(
+      `SELECT n.*, p.title as project_title, p.slug as project_slug
+       FROM trip_notifications n
+       JOIN trip_participants tp ON tp.id = n.participant_id
+       JOIN trip_projects p ON p.id = n.project_id
+       WHERE tp.user_id = $1
+         AND n.channel = 'in_app'
+         AND n.status IN ('sent', 'pending')
+       ORDER BY n.created_at DESC
+       LIMIT $2`,
+      [userId, limit]
+    );
+  },
+
+  /**
+   * Count unread in_app notifications for a user.
+   */
+  async countUnread(userId: string): Promise<number> {
+    const row = await queryOne<{ cnt: string }>(
+      `SELECT COUNT(*) as cnt
+       FROM trip_notifications n
+       JOIN trip_participants tp ON tp.id = n.participant_id
+       WHERE tp.user_id = $1
+         AND n.channel = 'in_app'
+         AND n.status IN ('sent', 'pending')
+         AND n.read_at IS NULL`,
+      [userId]
+    );
+    return parseInt(row?.cnt || "0", 10);
+  },
+
+  /**
+   * Mark a single notification as read.
+   */
+  async markAsRead(notificationId: string): Promise<void> {
+    await execute(
+      `UPDATE trip_notifications SET read_at = NOW() WHERE id = $1 AND read_at IS NULL`,
+      [notificationId]
+    );
+  },
+
+  /**
+   * Mark all in_app notifications as read for a user.
+   */
+  async markAllAsRead(userId: string): Promise<number> {
+    const result = await query<{ id: string }>(
+      `UPDATE trip_notifications n
+       SET read_at = NOW()
+       FROM trip_participants tp
+       WHERE tp.id = n.participant_id
+         AND tp.user_id = $1
+         AND n.channel = 'in_app'
+         AND n.read_at IS NULL
+       RETURNING n.id`,
+      [userId]
+    );
+    return result.length;
+  },
 };

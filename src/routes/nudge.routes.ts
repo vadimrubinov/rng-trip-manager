@@ -57,3 +57,64 @@ nudgeRouter.get("/settings", async (_req: Request, res: Response) => {
     res.status(500).json({ error: e?.message || "Internal server error" });
   }
 });
+
+// Get all notifications for a user: GET /api/nudge/user-notifications?clerkUserId=...
+nudgeRouter.get("/user-notifications", async (req: Request, res: Response) => {
+  try {
+    const clerkUserId = req.query.clerkUserId as string;
+    if (!clerkUserId) {
+      return res.status(400).json({ error: "clerkUserId required" });
+    }
+    const limit = parseInt(req.query.limit as string) || 50;
+    const notifications = await nudgeNotifications.listByUser(clerkUserId, limit);
+    res.json({ notifications });
+  } catch (e: any) {
+    console.error("[NudgeAPI] UserNotifications error:", e?.message);
+    res.status(500).json({ error: e?.message || "Internal server error" });
+  }
+});
+
+// Get unread count for a user: GET /api/nudge/unread-count?clerkUserId=...
+nudgeRouter.get("/unread-count", async (req: Request, res: Response) => {
+  try {
+    const clerkUserId = req.query.clerkUserId as string;
+    if (!clerkUserId) {
+      return res.status(400).json({ error: "clerkUserId required" });
+    }
+    const count = await nudgeNotifications.countUnread(clerkUserId);
+    res.json({ count });
+  } catch (e: any) {
+    console.error("[NudgeAPI] UnreadCount error:", e?.message);
+    res.status(500).json({ error: e?.message || "Internal server error" });
+  }
+});
+
+// Mark single notification as read: POST /api/nudge/notifications/read
+nudgeRouter.post("/notifications/read", async (req: Request, res: Response) => {
+  try {
+    const { notificationId } = req.body;
+    if (!notificationId) {
+      return res.status(400).json({ error: "notificationId required" });
+    }
+    await nudgeNotifications.markAsRead(notificationId);
+    res.json({ ok: true });
+  } catch (e: any) {
+    console.error("[NudgeAPI] MarkRead error:", e?.message);
+    res.status(500).json({ error: e?.message || "Internal server error" });
+  }
+});
+
+// Mark all notifications as read for user: POST /api/nudge/notifications/read-all
+nudgeRouter.post("/notifications/read-all", async (req: Request, res: Response) => {
+  try {
+    const { clerkUserId } = req.body;
+    if (!clerkUserId) {
+      return res.status(400).json({ error: "clerkUserId required" });
+    }
+    const count = await nudgeNotifications.markAllAsRead(clerkUserId);
+    res.json({ ok: true, marked: count });
+  } catch (e: any) {
+    console.error("[NudgeAPI] MarkAllRead error:", e?.message);
+    res.status(500).json({ error: e?.message || "Internal server error" });
+  }
+});
