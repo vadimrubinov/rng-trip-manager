@@ -40,6 +40,7 @@ publicRouter.get("/:slug", async (req: Request, res: Response) => {
       status: t.status,
       sort_order: t.sort_order,
       vendor_name: t.vendor_name,
+      vendor_record_id: t.vendor_record_id,
     }));
 
     const publicParticipants = participantRows
