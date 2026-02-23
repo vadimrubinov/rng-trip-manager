@@ -3,6 +3,8 @@ import { ENV } from "../config/env";
 
 const client = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
 
+export { client as openaiClient };
+
 export async function generateText(systemPrompt: string, userMessage: string): Promise<string> {
   const MAX_RETRIES = 3;
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {

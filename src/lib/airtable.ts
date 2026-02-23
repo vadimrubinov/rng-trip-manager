@@ -28,6 +28,27 @@ async function listRecords(baseId: string, table: string, maxRecords = 100): Pro
   return data.records || [];
 }
 
+export async function getNudgeSettings(): Promise<Record<string, string>> {
+  try {
+    const records = await findRecords(
+      ENV.AIRTABLE_BASE_ID_CHAT,
+      "Chat_Settings",
+      "FIND('NUDGE', {key})",
+      20
+    );
+    const settings: Record<string, string> = {};
+    for (const rec of records) {
+      if (rec.fields?.key && rec.fields?.value !== undefined) {
+        settings[rec.fields.key] = String(rec.fields.value);
+      }
+    }
+    return settings;
+  } catch (e: any) {
+    console.error("[Airtable] Failed to load Nudge settings:", e?.message);
+    return {};
+  }
+}
+
 export const airtable = {
   async getScout(recordId: string): Promise<{ brief: string; transcript: string; title: string } | null> {
     try {

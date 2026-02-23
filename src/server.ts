@@ -4,6 +4,8 @@ import { ENV } from "./config/env";
 import { tripsRouter } from "./routes/trips.routes";
 import { publicRouter } from "./routes/public.routes";
 import { emailRouter } from "./routes/email.routes";
+import { nudgeRouter } from "./routes/nudge.routes";
+import { nudgeService } from "./services/nudge/nudge.service";
 import { requireApiSecret } from "./middleware/auth";
 import { runMigrations } from "./db/migrate";
 import { pool } from "./db/pool";
@@ -64,7 +66,7 @@ async function main() {
 
   // Health check (no auth)
   app.get("/health", (_req, res) => {
-    res.json({ status: "ok", service: "rng-trip-manager", version: "1.2.0" });
+    res.json({ status: "ok", service: "rng-trip-manager", version: "1.3.0" });
   });
 
   // Public routes (no auth — for landing page)
@@ -76,14 +78,30 @@ async function main() {
   // Email routes (protected)
   app.use("/api/email", requireApiSecret, emailRouter);
 
+  // Nudge routes (protected)
+  app.use("/api/nudge", requireApiSecret, nudgeRouter);
+
   const PORT = ENV.PORT;
   app.listen(PORT, () => {
-    console.log(`[rng-trip-manager] v1.2.0 listening on :${PORT}`);
+    console.log(`[rng-trip-manager] v1.3.0 listening on :${PORT}`);
 
     // Draft cleanup cron — every 60 minutes
     const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
     setInterval(cleanupDrafts, CLEANUP_INTERVAL_MS);
     console.log(`[rng-trip-manager] Draft cleanup interval: every ${CLEANUP_INTERVAL_MS / 60000} min`);
+
+    // Nudge Engine cron — every 60 minutes
+    const NUDGE_INTERVAL_MS = 60 * 60 * 1000;
+    setInterval(async () => {
+      try {
+        console.log("[NudgeCron] Starting cycle...");
+        const result = await nudgeService.runCycle();
+        console.log(`[NudgeCron] Cycle complete: ${result.processed} processed, ${result.errors.length} errors`);
+      } catch (err: any) {
+        console.error("[NudgeCron] Fatal error:", err?.message);
+      }
+    }, NUDGE_INTERVAL_MS);
+    console.log(`[rng-trip-manager] Nudge Engine interval: every ${NUDGE_INTERVAL_MS / 60000} min`);
 
     // Run initial cleanup after 5 min
     setTimeout(cleanupDrafts, 5 * 60 * 1000);

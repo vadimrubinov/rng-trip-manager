@@ -19,4 +19,5 @@ export const ENV = {
   NODE_ENV: process.env.NODE_ENV || "development",
   CORS_ORIGINS: process.env.CORS_ORIGINS || "https://bitescout-web-zhea.onrender.com,https://bitescout.com,http://localhost:3000",
   RESEND_API_KEY: process.env.RESEND_API_KEY || "",
+  NUDGE_ENABLED: process.env.NUDGE_ENABLED || "true",
 };

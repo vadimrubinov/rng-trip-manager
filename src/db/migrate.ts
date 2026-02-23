@@ -149,6 +149,28 @@ CREATE TABLE IF NOT EXISTS trip_locations (
 CREATE INDEX IF NOT EXISTS idx_locations_project ON trip_locations(project_id);
 CREATE INDEX IF NOT EXISTS idx_locations_project_day ON trip_locations(project_id, day_number);
 
+CREATE TABLE IF NOT EXISTS trip_notifications (
+    id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    project_id        UUID NOT NULL REFERENCES trip_projects(id) ON DELETE CASCADE,
+    task_id           UUID REFERENCES trip_tasks(id) ON DELETE CASCADE,
+    participant_id    UUID REFERENCES trip_participants(id) ON DELETE CASCADE,
+    trigger_type      VARCHAR(30) NOT NULL,
+    channel           VARCHAR(20) NOT NULL DEFAULT 'email',
+    status            VARCHAR(20) NOT NULL DEFAULT 'pending',
+    scheduled_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    sent_at           TIMESTAMPTZ,
+    message_subject   VARCHAR(300),
+    message_text      TEXT,
+    error             TEXT,
+    metadata          JSONB DEFAULT '{}',
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_project ON trip_notifications(project_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_status ON trip_notifications(status);
+CREATE INDEX IF NOT EXISTS idx_notifications_participant ON trip_notifications(participant_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_scheduled ON trip_notifications(scheduled_at) WHERE status = 'pending';
+
 CREATE OR REPLACE FUNCTION update_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
@@ -172,7 +194,8 @@ END $$;
 
 const EXPECTED_TABLES = [
   "trip_templates", "trip_projects", "trip_participants",
-  "trip_tasks", "trip_events", "trip_media", "trip_locations"
+  "trip_tasks", "trip_events", "trip_media", "trip_locations",
+  "trip_notifications"
 ];
 
 export async function runMigrations(): Promise<void> {

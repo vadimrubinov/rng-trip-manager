@@ -6,6 +6,7 @@ import { participantsService } from "../services/participants.service";
 import { eventsService } from "../services/events.service";
 import { plannerService } from "../services/planner.service";
 import { emailService } from "../services/email/email.service";
+import { nudgeService } from "../services/nudge/nudge.service";
 import { query, queryOne, execute } from "../db/pool";
 import { TripParticipantRow } from "../types";
 
@@ -181,6 +182,17 @@ tripsRouter.post("/update-status", async (req: Request, res: Response) => {
           console.error("[Trips] Confirmation email error:", err?.message);
         }
       })();
+
+      // Fire nudge event for trip activation
+      try {
+        await nudgeService.triggerEvent({
+          projectId: project.id,
+          eventType: "trip_activated",
+          eventText: `Trip "${project.title}" has been activated and paid`,
+        });
+      } catch (e: any) {
+        console.error("[Nudge] Event trigger:", e?.message);
+      }
     }
 
     res.json(updated);
@@ -265,6 +277,19 @@ tripsRouter.post("/invitations/send-all", async (req: Request, res: Response) =>
     }
 
     res.json({ sent, failed, errors });
+
+    // Fire nudge event for invitations sent (fire-and-forget)
+    if (sent > 0) {
+      try {
+        await nudgeService.triggerEvent({
+          projectId,
+          eventType: "invitations_sent",
+          eventText: `Trip invitations sent to ${sent} participants`,
+        });
+      } catch (e: any) {
+        console.error("[Nudge] Event trigger:", e?.message);
+      }
+    }
   } catch (e: any) {
     console.error("[Trips] SendAll:", e?.message);
     res.status(500).json({ error: e?.message || "Internal server error" });
