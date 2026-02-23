@@ -36,7 +36,7 @@ tripsRouter.post("/generate-and-create", async (req: Request, res: Response) => 
     const userId = getUserId(req);
     if (!userId) return noAuth(res);
 
-    const { scoutId, tripDetails, brief, status: requestedStatus } = req.body;
+    const { scoutId, tripDetails, brief, status: requestedStatus, organizerEmail, organizerName } = req.body;
 
     // Accept brief as tripDetails alias
     const effectiveTripDetails = tripDetails || brief;
@@ -74,7 +74,7 @@ tripsRouter.post("/generate-and-create", async (req: Request, res: Response) => 
     }
 
     // 4. Add organizer as participant
-    await participantsService.create(project.id, { name: "Organizer", userId, role: "organizer" });
+    await participantsService.create(project.id, { name: organizerName || "Organizer", email: organizerEmail || undefined, userId, role: "organizer" });
 
     // 5. Create tasks (batch)
     const tasks = [];
