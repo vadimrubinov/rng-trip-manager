@@ -125,4 +125,39 @@ export const emailService = {
    * Load current email settings (for checking CC_ORGANIZER etc.)
    */
   loadSettings,
+
+  /**
+   * Send an email using a template, with custom from/replyTo overrides.
+   * Used for vendor inquiries where reply-to must be per-inquiry.
+   */
+  async sendTemplateWithOverrides(
+    templateKey: string,
+    to: string,
+    variables: Record<string, string>,
+    overrides: { replyTo?: string; from?: string }
+  ): Promise<EmailResult> {
+    try {
+      const [settings, template] = await Promise.all([
+        loadSettings(),
+        loadTemplate(templateKey),
+      ]);
+
+      if (!template) {
+        return { success: false, error: `Template '${templateKey}' not found` };
+      }
+
+      const subject = interpolateVariables(template.subject, variables);
+      const bodyHtml = interpolateVariables(template.bodyHtml, variables);
+      const html = await renderEmail(bodyHtml);
+
+      const fromAddr = overrides.from ||
+        `${settings.EMAIL_FROM_NAME || "BiteScout"} <${settings.EMAIL_FROM_ADDRESS || "noreply@bitescout.com"}>`;
+      const replyTo = overrides.replyTo || settings.EMAIL_REPLY_TO || undefined;
+
+      return await sendViaResend(to, fromAddr, subject, html, replyTo);
+    } catch (err: any) {
+      console.error("[Email] sendTemplateWithOverrides error:", err?.message);
+      return { success: false, error: err?.message || "Unknown error" };
+    }
+  },
 };

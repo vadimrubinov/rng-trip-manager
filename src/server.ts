@@ -5,6 +5,7 @@ import { tripsRouter } from "./routes/trips.routes";
 import { publicRouter } from "./routes/public.routes";
 import { emailRouter } from "./routes/email.routes";
 import { nudgeRouter } from "./routes/nudge.routes";
+import { vendorRouter } from "./routes/vendor.routes";
 import { nudgeService } from "./services/nudge/nudge.service";
 import { requireApiSecret } from "./middleware/auth";
 import { runMigrations } from "./db/migrate";
@@ -66,7 +67,7 @@ async function main() {
 
   // Health check (no auth)
   app.get("/health", (_req, res) => {
-    res.json({ status: "ok", service: "rng-trip-manager", version: "1.4.0" });
+    res.json({ status: "ok", service: "rng-trip-manager", version: "1.5.0" });
   });
 
   // Public routes (no auth — for landing page)
@@ -81,9 +82,12 @@ async function main() {
   // Nudge routes (protected)
   app.use("/api/nudge", requireApiSecret, nudgeRouter);
 
+  // Vendor inquiry routes (protected)
+  app.use("/api/trips/vendor", requireApiSecret, vendorRouter);
+
   const PORT = ENV.PORT;
   app.listen(PORT, () => {
-    console.log(`[rng-trip-manager] v1.4.0 listening on :${PORT}`);
+    console.log(`[rng-trip-manager] v1.5.0 listening on :${PORT}`);
 
     // Draft cleanup cron — every 60 minutes
     const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;

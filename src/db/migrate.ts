@@ -174,6 +174,27 @@ CREATE INDEX IF NOT EXISTS idx_notifications_scheduled ON trip_notifications(sch
 -- v1.4.0: add read_at for notification UI
 ALTER TABLE trip_notifications ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ;
 
+-- v1.5.0: vendor inquiries
+CREATE TABLE IF NOT EXISTS trip_vendor_inquiries (
+    id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    project_id        UUID NOT NULL REFERENCES trip_projects(id) ON DELETE CASCADE,
+    vendor_record_id  TEXT NOT NULL,
+    vendor_name       TEXT,
+    vendor_email      TEXT NOT NULL,
+    subject           TEXT NOT NULL,
+    message_text      TEXT NOT NULL,
+    status            TEXT DEFAULT 'sent' CHECK (status IN ('sent','replied','no_response','bounced')),
+    sent_at           TIMESTAMPTZ DEFAULT NOW(),
+    replied_at        TIMESTAMPTZ,
+    reply_text        TEXT,
+    reply_from        TEXT,
+    resend_message_id TEXT,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_vendor_inquiries_project ON trip_vendor_inquiries(project_id);
+CREATE INDEX IF NOT EXISTS idx_vendor_inquiries_status ON trip_vendor_inquiries(status);
+
 CREATE OR REPLACE FUNCTION update_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
@@ -198,7 +219,7 @@ END $$;
 const EXPECTED_TABLES = [
   "trip_templates", "trip_projects", "trip_participants",
   "trip_tasks", "trip_events", "trip_media", "trip_locations",
-  "trip_notifications"
+  "trip_notifications", "trip_vendor_inquiries"
 ];
 
 export async function runMigrations(): Promise<void> {

@@ -112,4 +112,48 @@ export const airtable = {
       return null;
     }
   },
+
+  async getVendorById(recordId: string): Promise<{
+    name: string;
+    email: string | null;
+    phone: string | null;
+    website: string | null;
+    region: string | null;
+    country: string | null;
+    rating: number | null;
+    reviews: number | null;
+  } | null> {
+    try {
+      const rec = await getRecord(ENV.AIRTABLE_BASE_ID_OPS, "Vendors", recordId);
+      const f = rec.fields || {};
+      return {
+        name: f.Name || "",
+        email: f.Contact_Email || null,
+        phone: f.Contact_Phone || null,
+        website: f.Website_URL || null,
+        region: f.Region || null,
+        country: f.Country || null,
+        rating: f.Google_Rating ?? null,
+        reviews: f.Reviews_Count ?? null,
+      };
+    } catch (e: any) {
+      console.error("[Airtable] Failed to get vendor:", e?.message);
+      return null;
+    }
+  },
+
+  async getChatSetting(key: string): Promise<string | null> {
+    try {
+      const records = await findRecords(
+        ENV.AIRTABLE_BASE_ID_CHAT,
+        "Chat_Settings",
+        `{key}='${key}'`,
+        1
+      );
+      return records[0]?.fields?.value ?? null;
+    } catch (e: any) {
+      console.error("[Airtable] Failed to get Chat_Setting:", e?.message);
+      return null;
+    }
+  },
 };
