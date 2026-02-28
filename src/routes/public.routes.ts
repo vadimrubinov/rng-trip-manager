@@ -18,8 +18,8 @@ publicRouter.get("/:slug", async (req: Request, res: Response) => {
       return res.status(404).json({ error: "Trip not found" });
     }
 
-    // Draft trips: only visible to owner
-    if (project.status === "draft") {
+    // Draft and frozen trips: only visible to owner
+    if (project.status === "draft" || project.status === "frozen") {
       const userId = req.query.userId as string;
       if (!userId || userId !== project.user_id) {
         return res.status(404).json({ error: "Trip not found" });

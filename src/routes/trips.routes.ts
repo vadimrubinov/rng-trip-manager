@@ -155,8 +155,8 @@ tripsRouter.post("/update-status", async (req: Request, res: Response) => {
       payment_id: paymentId,
     });
 
-    // Send confirmation email when trip is paid/activated
-    if (paymentStatus === "paid" || status === "active") {
+    // Send confirmation email when trip is activated
+    if (status === "active") {
       (async () => {
         try {
           const organizer = await queryOne<TripParticipantRow>(
@@ -408,6 +408,25 @@ tripsRouter.post("/delete", async (req: Request, res: Response) => {
     res.json({ ok: true });
   } catch (e: any) {
     console.error("[Trips] Delete:", e?.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+tripsRouter.post("/unfreeze-all", async (req: Request, res: Response) => {
+  try {
+    const { clerkUserId } = req.body;
+    if (!clerkUserId) return res.status(400).json({ error: "clerkUserId required" });
+
+    const result = await execute(
+      `UPDATE trip_projects SET status = 'active' WHERE user_id = $1 AND status = 'frozen'`,
+      [clerkUserId]
+    );
+
+    const count = result.rowCount || 0;
+    console.log(`[Trips] Unfreeze-all: user=${clerkUserId}, unfrozen=${count}`);
+    res.json({ ok: true, unfrozen: count });
+  } catch (e: any) {
+    console.error("[Trips] Unfreeze-all:", e?.message);
     res.status(500).json({ error: "Internal server error" });
   }
 });
