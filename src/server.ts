@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import compression from "compression";
 import { ENV } from "./config/env";
 import { tripsRouter } from "./routes/trips.routes";
 import { publicRouter } from "./routes/public.routes";
@@ -11,6 +12,15 @@ import { nudgeService } from "./services/nudge/nudge.service";
 import { requireApiSecret } from "./middleware/auth";
 import { runMigrations } from "./db/migrate";
 import { pool } from "./db/pool";
+import { log, correlationMiddleware } from "./lib/pino-logger";
+import { asyncHandler } from "./lib/async-handler";
+import { errorMiddleware, registerProcessHandlers } from "./lib/error-handler";
+import { registerGracefulShutdown } from "./lib/graceful-shutdown";
+import { deepHealthCheck } from "./lib/health";
+
+// Interval refs for graceful shutdown
+let draftCleanupInterval: ReturnType<typeof setInterval> | null = null;
+let nudgeInterval: ReturnType<typeof setInterval> | null = null;
 
 // Airtable settings helper
 async function getAirtableSetting(key: string, defaultValue: string): Promise<string> {
@@ -24,7 +34,7 @@ async function getAirtableSetting(key: string, defaultValue: string): Promise<st
       return data.records[0].fields.value || defaultValue;
     }
   } catch (e) {
-    console.error(`[Settings] Failed to load ${key}:`, e);
+    log.error({ err: e, key }, "settings.load_failed");
   }
   return defaultValue;
 }
@@ -32,10 +42,10 @@ async function getAirtableSetting(key: string, defaultValue: string): Promise<st
 async function cleanupDrafts() {
   try {
     const ttlHours = parseInt(await getAirtableSetting("DRAFT_TTL_HOURS", "24"), 10);
-    
+
     const result = await pool.query(
-      `DELETE FROM trip_projects 
-       WHERE status = 'draft' 
+      `DELETE FROM trip_projects
+       WHERE status = 'draft'
        AND payment_status != 'processing'
        AND created_at < NOW() - INTERVAL '1 hour' * $1
        RETURNING id, slug`,
@@ -43,11 +53,13 @@ async function cleanupDrafts() {
     );
 
     if (result.rowCount && result.rowCount > 0) {
-      console.log(`[DraftCleanup] Deleted ${result.rowCount} expired drafts:`, 
-        result.rows.map((r: any) => r.slug).join(', '));
+      log.info(
+        { count: result.rowCount, slugs: result.rows.map((r: any) => r.slug) },
+        "cron.draft_cleanup.deleted"
+      );
     }
   } catch (error: any) {
-    console.error("[DraftCleanup] Error:", error?.message);
+    log.error({ err: error }, "cron.draft_cleanup.error");
   }
 }
 
@@ -56,6 +68,9 @@ async function main() {
   await runMigrations();
 
   const app = express();
+
+  // M1: Compression middleware
+  app.use(compression());
 
   // Capture raw body for webhook signature verification — MUST be before express.json()
   app.use("/api/webhooks", express.json({
@@ -66,6 +81,9 @@ async function main() {
 
   app.use(express.json());
 
+  // M1: Correlation ID middleware
+  app.use(correlationMiddleware);
+
   const allowedOrigins = ENV.CORS_ORIGINS.split(",").map(s => s.trim());
   app.use(cors({
     origin: (origin, cb) => {
@@ -74,10 +92,8 @@ async function main() {
     },
   }));
 
-  // Health check (no auth)
-  app.get("/health", (_req, res) => {
-    res.json({ status: "ok", service: "rng-trip-manager", version: "1.6.0" });
-  });
+  // Health check — deep (checks PostgreSQL, Airtable)
+  app.get("/health", asyncHandler(deepHealthCheck));
 
   // Public routes (no auth — for landing page)
   app.use("/api/public/trip", publicRouter);
@@ -97,34 +113,52 @@ async function main() {
   // Vendor inquiry routes (protected)
   app.use("/api/trips/vendor", requireApiSecret, vendorRouter);
 
+  // M1: Error middleware — MUST be LAST
+  app.use(errorMiddleware);
+
   const PORT = ENV.PORT;
-  app.listen(PORT, () => {
-    console.log(`[rng-trip-manager] v1.6.0 listening on :${PORT}`);
+  const server = app.listen(PORT, () => {
+    log.info({ port: PORT }, "server.started");
 
     // Draft cleanup cron — every 60 minutes
     const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
-    setInterval(cleanupDrafts, CLEANUP_INTERVAL_MS);
-    console.log(`[rng-trip-manager] Draft cleanup interval: every ${CLEANUP_INTERVAL_MS / 60000} min`);
+    draftCleanupInterval = setInterval(cleanupDrafts, CLEANUP_INTERVAL_MS);
+    log.info({ intervalMin: 60 }, "cron.draft_cleanup.scheduled");
 
     // Nudge Engine cron — every 60 minutes
     const NUDGE_INTERVAL_MS = 60 * 60 * 1000;
-    setInterval(async () => {
+    nudgeInterval = setInterval(async () => {
       try {
-        console.log("[NudgeCron] Starting cycle...");
+        log.info("cron.nudge.start");
         const result = await nudgeService.runCycle();
-        console.log(`[NudgeCron] Cycle complete: ${result.processed} processed, ${result.errors.length} errors`);
+        log.info({ processed: result.processed, errors: result.errors.length }, "cron.nudge.done");
       } catch (err: any) {
-        console.error("[NudgeCron] Fatal error:", err?.message);
+        log.error({ err }, "cron.nudge.error");
       }
     }, NUDGE_INTERVAL_MS);
-    console.log(`[rng-trip-manager] Nudge Engine interval: every ${NUDGE_INTERVAL_MS / 60000} min`);
+    log.info({ intervalMin: 60 }, "cron.nudge.scheduled");
 
     // Run initial cleanup after 5 min
     setTimeout(cleanupDrafts, 5 * 60 * 1000);
   });
+
+  // M1: Graceful shutdown
+  registerGracefulShutdown({
+    server,
+    onShutdown: async () => {
+      if (draftCleanupInterval) clearInterval(draftCleanupInterval);
+      if (nudgeInterval) clearInterval(nudgeInterval);
+      log.info("shutdown.intervals_cleared");
+      await pool.end();
+      log.info("shutdown.pg_pool_closed");
+    },
+  });
+
+  // M1: Process-level error handlers
+  registerProcessHandlers();
 }
 
 main().catch((err) => {
-  console.error("[rng-trip-manager] Fatal:", err);
+  log.fatal({ err }, "startup.fatal");
   process.exit(1);
 });
