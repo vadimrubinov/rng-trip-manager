@@ -417,12 +417,11 @@ tripsRouter.post("/unfreeze-all", async (req: Request, res: Response) => {
     const { clerkUserId } = req.body;
     if (!clerkUserId) return res.status(400).json({ error: "clerkUserId required" });
 
-    const result = await execute(
+    const count = await execute(
       `UPDATE trip_projects SET status = 'active' WHERE user_id = $1 AND status = 'frozen'`,
       [clerkUserId]
     );
 
-    const count = result.rowCount || 0;
     console.log(`[Trips] Unfreeze-all: user=${clerkUserId}, unfrozen=${count}`);
     res.json({ ok: true, unfrozen: count });
   } catch (e: any) {
