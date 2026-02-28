@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { asyncHandler } from "../lib/async-handler";
 import { tripsService, TripProjectRow } from "../services/trips.service";
 import { tasksService } from "../services/tasks.service";
 import { locationsService } from "../services/locations.service";
@@ -31,7 +32,7 @@ function formatDates(start: string | null | undefined, end: string | null | unde
   return `${s.toLocaleDateString("en-US", opts)} - ${e.toLocaleDateString("en-US", opts)}`;
 }
 
-tripsRouter.post("/generate-and-create", async (req: Request, res: Response) => {
+tripsRouter.post("/generate-and-create", asyncHandler(async (req: Request, res: Response) => {
   try {
     const userId = getUserId(req);
     if (!userId) return noAuth(res);
@@ -109,9 +110,9 @@ tripsRouter.post("/generate-and-create", async (req: Request, res: Response) => 
     console.error("[Trips] GenerateAndCreate:", e?.message);
     res.status(500).json({ error: e?.message || "Internal server error" });
   }
-});
+}));
 
-tripsRouter.post("/generate-plan", async (req: Request, res: Response) => {
+tripsRouter.post("/generate-plan", asyncHandler(async (req: Request, res: Response) => {
   try {
     const userId = getUserId(req);
     if (!userId) return noAuth(res);
@@ -129,9 +130,9 @@ tripsRouter.post("/generate-plan", async (req: Request, res: Response) => {
     console.error("[Trips] GeneratePlan:", e?.message);
     res.status(500).json({ error: e?.message || "Internal server error" });
   }
-});
+}));
 
-tripsRouter.post("/update-status", async (req: Request, res: Response) => {
+tripsRouter.post("/update-status", asyncHandler(async (req: Request, res: Response) => {
   try {
     const isServerCall = !!req.headers["x-api-secret"];
     const userId = getUserId(req);
@@ -202,10 +203,10 @@ tripsRouter.post("/update-status", async (req: Request, res: Response) => {
     console.error("[Trips] UpdateStatus:", e?.message);
     res.status(500).json({ error: "Internal server error" });
   }
-});
+}));
 
 // Batch send invitations
-tripsRouter.post("/invitations/send-all", async (req: Request, res: Response) => {
+tripsRouter.post("/invitations/send-all", asyncHandler(async (req: Request, res: Response) => {
   try {
     const userId = getUserId(req);
     if (!userId) return noAuth(res);
@@ -296,9 +297,9 @@ tripsRouter.post("/invitations/send-all", async (req: Request, res: Response) =>
     console.error("[Trips] SendAll:", e?.message);
     res.status(500).json({ error: e?.message || "Internal server error" });
   }
-});
+}));
 
-tripsRouter.get("/list", async (req: Request, res: Response) => {
+tripsRouter.get("/list", asyncHandler(async (req: Request, res: Response) => {
   try {
     const userId = getUserId(req);
     if (!userId) return noAuth(res);
@@ -309,9 +310,9 @@ tripsRouter.get("/list", async (req: Request, res: Response) => {
     console.error("[Trips] List:", e?.message);
     res.status(500).json({ error: "Internal server error" });
   }
-});
+}));
 
-tripsRouter.get("/detail/:id", async (req: Request, res: Response) => {
+tripsRouter.get("/detail/:id", asyncHandler(async (req: Request, res: Response) => {
   try {
     const userId = getUserId(req);
     if (!userId) return noAuth(res);
@@ -335,9 +336,9 @@ tripsRouter.get("/detail/:id", async (req: Request, res: Response) => {
     console.error("[Trips] Detail:", e?.message);
     res.status(500).json({ error: "Internal server error" });
   }
-});
+}));
 
-tripsRouter.post("/update", async (req: Request, res: Response) => {
+tripsRouter.post("/update", asyncHandler(async (req: Request, res: Response) => {
   try {
     const userId = getUserId(req);
     if (!userId) return noAuth(res);
@@ -388,9 +389,9 @@ tripsRouter.post("/update", async (req: Request, res: Response) => {
     console.error("[Trips] Update:", e?.message);
     res.status(500).json({ error: "Internal server error" });
   }
-});
+}));
 
-tripsRouter.post("/delete", async (req: Request, res: Response) => {
+tripsRouter.post("/delete", asyncHandler(async (req: Request, res: Response) => {
   try {
     const userId = getUserId(req);
     if (!userId) return noAuth(res);
@@ -410,9 +411,9 @@ tripsRouter.post("/delete", async (req: Request, res: Response) => {
     console.error("[Trips] Delete:", e?.message);
     res.status(500).json({ error: "Internal server error" });
   }
-});
+}));
 
-tripsRouter.post("/unfreeze-all", async (req: Request, res: Response) => {
+tripsRouter.post("/unfreeze-all", asyncHandler(async (req: Request, res: Response) => {
   try {
     const { clerkUserId } = req.body;
     if (!clerkUserId) return res.status(400).json({ error: "clerkUserId required" });
@@ -428,4 +429,4 @@ tripsRouter.post("/unfreeze-all", async (req: Request, res: Response) => {
     console.error("[Trips] Unfreeze-all:", e?.message);
     res.status(500).json({ error: "Internal server error" });
   }
-});
+}));

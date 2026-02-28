@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { asyncHandler } from "../lib/async-handler";
 import { emailService } from "../services/email/email.service";
 
 export const emailRouter = Router();
@@ -7,7 +8,7 @@ export const emailRouter = Router();
  * POST /api/email/test
  * Send a test email using a template.
  */
-emailRouter.post("/test", async (req: Request, res: Response) => {
+emailRouter.post("/test", asyncHandler(async (req: Request, res: Response) => {
   try {
     const { template_key, to, variables } = req.body;
 
@@ -34,13 +35,13 @@ emailRouter.post("/test", async (req: Request, res: Response) => {
     console.error("[Email] Test endpoint:", e?.message);
     res.status(500).json({ success: false, error: e?.message || "Internal error" });
   }
-});
+}));
 
 /**
  * POST /api/email/preview
  * Render a template to HTML without sending.
  */
-emailRouter.post("/preview", async (req: Request, res: Response) => {
+emailRouter.post("/preview", asyncHandler(async (req: Request, res: Response) => {
   try {
     const { template_key, variables } = req.body;
 
@@ -58,4 +59,4 @@ emailRouter.post("/preview", async (req: Request, res: Response) => {
     console.error("[Email] Preview endpoint:", e?.message);
     res.status(500).json({ error: e?.message || "Internal error" });
   }
-});
+}));

@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { asyncHandler } from "../lib/async-handler";
 import { tripsService } from "../services/trips.service";
 import { vendorInquiryService } from "../services/vendor-inquiry.service";
 import { eventsService } from "../services/events.service";
@@ -15,7 +16,7 @@ function getUserId(req: Request): string | null {
 
 // ── POST /inquiry — generate, send, save ──
 
-vendorRouter.post("/inquiry", async (req: Request, res: Response) => {
+vendorRouter.post("/inquiry", asyncHandler(async (req: Request, res: Response) => {
   try {
     const userId = getUserId(req);
     if (!userId) return res.status(401).json({ error: "clerkUserId required" });
@@ -141,11 +142,11 @@ vendorRouter.post("/inquiry", async (req: Request, res: Response) => {
     console.error("[VendorInquiry] Error:", err?.message);
     return res.status(500).json({ error: err?.message || "Internal error" });
   }
-});
+}));
 
 // ── POST /inquiry/preview — generate without sending ──
 
-vendorRouter.post("/inquiry/preview", async (req: Request, res: Response) => {
+vendorRouter.post("/inquiry/preview", asyncHandler(async (req: Request, res: Response) => {
   try {
     const userId = getUserId(req);
     if (!userId) return res.status(401).json({ error: "clerkUserId required" });
@@ -187,11 +188,11 @@ vendorRouter.post("/inquiry/preview", async (req: Request, res: Response) => {
     console.error("[VendorInquiry Preview] Error:", err?.message);
     return res.status(500).json({ error: err?.message || "Internal error" });
   }
-});
+}));
 
 // ── GET /inquiries/:projectId — list inquiries for project ──
 
-vendorRouter.get("/inquiries/:projectId", async (req: Request, res: Response) => {
+vendorRouter.get("/inquiries/:projectId", asyncHandler(async (req: Request, res: Response) => {
   try {
     const userId = req.query.clerkUserId as string;
     if (!userId) return res.status(401).json({ error: "clerkUserId required" });
@@ -207,11 +208,11 @@ vendorRouter.get("/inquiries/:projectId", async (req: Request, res: Response) =>
     console.error("[VendorInquiry List] Error:", err?.message);
     return res.status(500).json({ error: err?.message || "Internal error" });
   }
-});
+}));
 
 // ── GET /inquiry/:inquiryId — single inquiry detail ──
 
-vendorRouter.get("/inquiry/:inquiryId", async (req: Request, res: Response) => {
+vendorRouter.get("/inquiry/:inquiryId", asyncHandler(async (req: Request, res: Response) => {
   try {
     const userId = req.query.clerkUserId as string;
     if (!userId) return res.status(401).json({ error: "clerkUserId required" });
@@ -229,4 +230,4 @@ vendorRouter.get("/inquiry/:inquiryId", async (req: Request, res: Response) => {
   } catch (err: any) {
     return res.status(500).json({ error: err?.message || "Internal error" });
   }
-});
+}));

@@ -1,11 +1,12 @@
 import { Router, Request, Response } from "express";
+import { asyncHandler } from "../lib/async-handler";
 import { nudgeService } from "../services/nudge/nudge.service";
 import { nudgeNotifications } from "../services/nudge/nudge.notifications";
 
 export const nudgeRouter = Router();
 
 // Manual trigger: POST /api/nudge/run
-nudgeRouter.post("/run", async (_req: Request, res: Response) => {
+nudgeRouter.post("/run", asyncHandler(async (_req: Request, res: Response) => {
   try {
     console.log("[NudgeAPI] Manual run triggered");
     const result = await nudgeService.runCycle();
@@ -14,10 +15,10 @@ nudgeRouter.post("/run", async (_req: Request, res: Response) => {
     console.error("[NudgeAPI] Run error:", e?.message);
     res.status(500).json({ error: e?.message || "Internal server error" });
   }
-});
+}));
 
 // Trigger event: POST /api/nudge/trigger-event
-nudgeRouter.post("/trigger-event", async (req: Request, res: Response) => {
+nudgeRouter.post("/trigger-event", asyncHandler(async (req: Request, res: Response) => {
   try {
     const { projectId, eventType, eventText } = req.body;
     if (!projectId || !eventType) {
@@ -33,10 +34,10 @@ nudgeRouter.post("/trigger-event", async (req: Request, res: Response) => {
     console.error("[NudgeAPI] TriggerEvent error:", e?.message);
     res.status(500).json({ error: e?.message || "Internal server error" });
   }
-});
+}));
 
 // Get notifications for a project: GET /api/nudge/notifications/:projectId
-nudgeRouter.get("/notifications/:projectId", async (req: Request, res: Response) => {
+nudgeRouter.get("/notifications/:projectId", asyncHandler(async (req: Request, res: Response) => {
   try {
     const { projectId } = req.params;
     const notifications = await nudgeNotifications.listByProject(projectId);
@@ -45,10 +46,10 @@ nudgeRouter.get("/notifications/:projectId", async (req: Request, res: Response)
     console.error("[NudgeAPI] ListNotifications error:", e?.message);
     res.status(500).json({ error: e?.message || "Internal server error" });
   }
-});
+}));
 
 // Get nudge settings: GET /api/nudge/settings
-nudgeRouter.get("/settings", async (_req: Request, res: Response) => {
+nudgeRouter.get("/settings", asyncHandler(async (_req: Request, res: Response) => {
   try {
     const settings = await nudgeService.loadSettings();
     res.json(settings);
@@ -56,10 +57,10 @@ nudgeRouter.get("/settings", async (_req: Request, res: Response) => {
     console.error("[NudgeAPI] Settings error:", e?.message);
     res.status(500).json({ error: e?.message || "Internal server error" });
   }
-});
+}));
 
 // Get all notifications for a user: GET /api/nudge/user-notifications?clerkUserId=...
-nudgeRouter.get("/user-notifications", async (req: Request, res: Response) => {
+nudgeRouter.get("/user-notifications", asyncHandler(async (req: Request, res: Response) => {
   try {
     const clerkUserId = req.query.clerkUserId as string;
     if (!clerkUserId) {
@@ -72,10 +73,10 @@ nudgeRouter.get("/user-notifications", async (req: Request, res: Response) => {
     console.error("[NudgeAPI] UserNotifications error:", e?.message);
     res.status(500).json({ error: e?.message || "Internal server error" });
   }
-});
+}));
 
 // Get unread count for a user: GET /api/nudge/unread-count?clerkUserId=...
-nudgeRouter.get("/unread-count", async (req: Request, res: Response) => {
+nudgeRouter.get("/unread-count", asyncHandler(async (req: Request, res: Response) => {
   try {
     const clerkUserId = req.query.clerkUserId as string;
     if (!clerkUserId) {
@@ -87,10 +88,10 @@ nudgeRouter.get("/unread-count", async (req: Request, res: Response) => {
     console.error("[NudgeAPI] UnreadCount error:", e?.message);
     res.status(500).json({ error: e?.message || "Internal server error" });
   }
-});
+}));
 
 // Mark single notification as read: POST /api/nudge/notifications/read
-nudgeRouter.post("/notifications/read", async (req: Request, res: Response) => {
+nudgeRouter.post("/notifications/read", asyncHandler(async (req: Request, res: Response) => {
   try {
     const { notificationId } = req.body;
     if (!notificationId) {
@@ -102,10 +103,10 @@ nudgeRouter.post("/notifications/read", async (req: Request, res: Response) => {
     console.error("[NudgeAPI] MarkRead error:", e?.message);
     res.status(500).json({ error: e?.message || "Internal server error" });
   }
-});
+}));
 
 // Mark all notifications as read for user: POST /api/nudge/notifications/read-all
-nudgeRouter.post("/notifications/read-all", async (req: Request, res: Response) => {
+nudgeRouter.post("/notifications/read-all", asyncHandler(async (req: Request, res: Response) => {
   try {
     const { clerkUserId } = req.body;
     if (!clerkUserId) {
@@ -117,4 +118,4 @@ nudgeRouter.post("/notifications/read-all", async (req: Request, res: Response) 
     console.error("[NudgeAPI] MarkAllRead error:", e?.message);
     res.status(500).json({ error: e?.message || "Internal server error" });
   }
-});
+}));

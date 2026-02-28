@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { asyncHandler } from "../lib/async-handler";
 import { tripsService } from "../services/trips.service";
 import { tasksService } from "../services/tasks.service";
 import { locationsService } from "../services/locations.service";
@@ -7,7 +8,7 @@ import { vendorInquiryService } from "../services/vendor-inquiry.service";
 
 export const publicRouter = Router();
 
-publicRouter.get("/:slug", async (req: Request, res: Response) => {
+publicRouter.get("/:slug", asyncHandler(async (req: Request, res: Response) => {
   try {
     const { slug } = req.params;
     if (!slug) return res.status(400).json({ error: "slug required" });
@@ -98,9 +99,9 @@ publicRouter.get("/:slug", async (req: Request, res: Response) => {
     console.error("[Public] Get trip:", e?.message);
     res.status(500).json({ error: "Internal server error" });
   }
-});
+}));
 
-publicRouter.get("/:slug/invite/:token", async (req: Request, res: Response) => {
+publicRouter.get("/:slug/invite/:token", asyncHandler(async (req: Request, res: Response) => {
   try {
     const { slug, token } = req.params;
 
@@ -126,4 +127,4 @@ publicRouter.get("/:slug/invite/:token", async (req: Request, res: Response) => 
     console.error("[Public] Get invite:", e?.message);
     res.status(500).json({ error: "Internal server error" });
   }
-});
+}));

@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { asyncHandler } from "../lib/async-handler";
 import { Resend } from "resend";
 import { ENV } from "../config/env";
 import { vendorInquiryService } from "../services/vendor-inquiry.service";
@@ -14,7 +15,7 @@ export const webhookRouter = Router();
 
 const INQUIRY_REGEX = /^inquiry\+([a-f0-9-]{36})@bitescout\.com$/i;
 
-webhookRouter.post("/inbound-email", async (req: Request, res: Response) => {
+webhookRouter.post("/inbound-email", asyncHandler(async (req: Request, res: Response) => {
   try {
     // 1. Verify webhook signature
     let event: any;
@@ -177,4 +178,4 @@ webhookRouter.post("/inbound-email", async (req: Request, res: Response) => {
     // Still return 200 to prevent Resend retries on our errors
     return res.json({ ok: true });
   }
-});
+}));
