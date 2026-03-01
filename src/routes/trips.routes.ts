@@ -38,6 +38,22 @@ tripsRouter.post("/generate-and-create", asyncHandler(async (req: Request, res: 
     const userId = getUserId(req);
     if (!userId) return noAuth(res);
 
+    const { scoutId, tripDetails, brief, status: requestedStatus, organizerEmail, organizerName, maxActiveTrips } = req.body;
+
+    // --- Trip limit check ---
+    if (typeof maxActiveTrips === "number" && maxActiveTrips >= 0) {
+      const currentCount = await tripsService.countActiveByUser(userId);
+      if (currentCount >= maxActiveTrips) {
+        log.info({ userId, currentCount, maxActiveTrips }, "[Trips] Trip limit reached");
+        return res.status(403).json({
+          error: "trip_limit_reached",
+          message: `Your plan allows ${maxActiveTrips} active trip${maxActiveTrips === 1 ? "" : "s"}. Upgrade your plan to create more.`,
+          currentCount,
+          maxActiveTrips,
+        });
+      }
+    }
+
     const { scoutId, tripDetails, brief, status: requestedStatus, organizerEmail, organizerName } = req.body;
 
     // Accept brief as tripDetails alias
@@ -625,3 +641,4 @@ tripsRouter.post("/unfreeze-all", asyncHandler(async (req: Request, res: Respons
     res.status(500).json({ error: "Internal server error" });
   }
 }));
+
