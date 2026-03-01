@@ -537,7 +537,9 @@ tripsRouter.post("/update", asyncHandler(async (req: Request, res: Response) => 
     const userId = getUserId(req);
     if (!userId) return noAuth(res);
 
-    const { id, title, description, region, country, datesStart, datesEnd } = req.body;
+    const { id, title, description, region, country, datesStart, datesEnd,
+            targetSpecies, tripType, participantsCount, experienceLevel,
+            budgetMin, budgetMax, itinerary } = req.body;
     if (!id) return res.status(400).json({ error: "id required" });
 
     const project = await tripsService.getById(id);
@@ -546,38 +548,37 @@ tripsRouter.post("/update", asyncHandler(async (req: Request, res: Response) => 
       return res.status(403).json({ error: "Forbidden" });
     }
 
-    const sets: string[] = ["updated_at = NOW()"];
+    const sets: string[] = [];
     const params: any[] = [];
     let i = 1;
 
-    if (title !== undefined) {
-      params.push(title);
-      sets.push(`title = $${i++}`);
-    }
-    if (description !== undefined) {
-      params.push(description);
-      sets.push(`description = $${i++}`);
-    }
-    if (region !== undefined) {
-      params.push(region);
-      sets.push(`region = $${i++}`);
-    }
-    if (country !== undefined) {
-      params.push(country);
-      sets.push(`country = $${i++}`);
-    }
-    if (datesStart !== undefined) {
-      params.push(datesStart);
-      sets.push(`dates_start = $${i++}`);
-    }
-    if (datesEnd !== undefined) {
-      params.push(datesEnd);
-      sets.push(`dates_end = $${i++}`);
+    if (title !== undefined) { sets.push(`title = $${i++}`); params.push(title); }
+    if (description !== undefined) { sets.push(`description = $${i++}`); params.push(description); }
+    if (region !== undefined) { sets.push(`region = $${i++}`); params.push(region); }
+    if (country !== undefined) { sets.push(`country = $${i++}`); params.push(country); }
+    if (datesStart !== undefined) { sets.push(`dates_start = $${i++}`); params.push(datesStart); }
+    if (datesEnd !== undefined) { sets.push(`dates_end = $${i++}`); params.push(datesEnd); }
+    if (targetSpecies !== undefined) { sets.push(`target_species = $${i++}`); params.push(targetSpecies); }
+    if (tripType !== undefined) { sets.push(`trip_type = $${i++}`); params.push(tripType); }
+    if (participantsCount !== undefined) { sets.push(`participants_count = $${i++}`); params.push(participantsCount); }
+    if (experienceLevel !== undefined) { sets.push(`experience_level = $${i++}`); params.push(experienceLevel); }
+    if (budgetMin !== undefined) { sets.push(`budget_min = $${i++}`); params.push(budgetMin); }
+    if (budgetMax !== undefined) { sets.push(`budget_max = $${i++}`); params.push(budgetMax); }
+    if (itinerary !== undefined) { sets.push(`itinerary = $${i++}`); params.push(JSON.stringify(itinerary)); }
+
+    if (sets.length === 0) {
+      return res.status(400).json({ error: "No fields to update" });
     }
 
+    sets.push("updated_at = NOW()");
     params.push(id);
-    const result = await tripsService.getById(id);
 
+    await execute(
+      `UPDATE trip_projects SET ${sets.join(", ")} WHERE id = $${i}`,
+      params
+    );
+
+    const result = await tripsService.getById(id);
     res.json(result);
   } catch (e: any) {
     log.error({ err: e }, "[Trips] Update");
