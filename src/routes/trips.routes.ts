@@ -338,6 +338,34 @@ tripsRouter.get("/detail/:id", asyncHandler(async (req: Request, res: Response) 
   }
 }));
 
+// POST variant: accepts projectId in body (used by bitescout-web and rng-ai-service)
+tripsRouter.post("/detail", asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return noAuth(res);
+
+    const { projectId } = req.body;
+    if (!projectId) return res.status(400).json({ error: "projectId required" });
+
+    const project = await tripsService.getById(projectId);
+    if (!project) return res.status(404).json({ error: "Trip not found" });
+    if (project.user_id !== userId) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    const [tasks, locations, participants] = await Promise.all([
+      tasksService.listByProject(projectId),
+      locationsService.listByProject(projectId),
+      participantsService.listByProject(projectId),
+    ]);
+
+    res.json({ project, tasks, locations, participants });
+  } catch (e: any) {
+    console.error("[Trips] Detail (POST):", e?.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+}));
+
 tripsRouter.post("/update", asyncHandler(async (req: Request, res: Response) => {
   try {
     const userId = getUserId(req);
