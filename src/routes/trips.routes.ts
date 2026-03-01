@@ -1,3 +1,4 @@
+import { log } from "../lib/pino-logger";
 import { Router, Request, Response } from "express";
 import { asyncHandler } from "../lib/async-handler";
 import { tripsService, TripProjectRow } from "../services/trips.service";
@@ -107,7 +108,7 @@ tripsRouter.post("/generate-and-create", asyncHandler(async (req: Request, res: 
       tripUrl,
     });
   } catch (e: any) {
-    console.error("[Trips] GenerateAndCreate:", e?.message);
+    log.error({ err: e }, "[Trips] GenerateAndCreate");
     res.status(500).json({ error: e?.message || "Internal server error" });
   }
 }));
@@ -127,7 +128,7 @@ tripsRouter.post("/generate-plan", asyncHandler(async (req: Request, res: Respon
     const plan = await plannerService.generatePlan({ scoutId, tripDetails: effectiveTripDetails });
     res.json(plan);
   } catch (e: any) {
-    console.error("[Trips] GeneratePlan:", e?.message);
+    log.error({ err: e }, "[Trips] GeneratePlan");
     res.status(500).json({ error: e?.message || "Internal server error" });
   }
 }));
@@ -182,7 +183,7 @@ tripsRouter.post("/update-status", asyncHandler(async (req: Request, res: Respon
             );
           }
         } catch (err: any) {
-          console.error("[Trips] Confirmation email error:", err?.message);
+          log.error({ err }, "[Trips] Confirmation email error");
         }
       })();
 
@@ -194,13 +195,13 @@ tripsRouter.post("/update-status", asyncHandler(async (req: Request, res: Respon
           eventText: `Trip "${project.title}" has been activated and paid`,
         });
       } catch (e: any) {
-        console.error("[Nudge] Event trigger:", e?.message);
+        log.error({ err: e }, "[Nudge] Event trigger");
       }
     }
 
     res.json(updated);
   } catch (e: any) {
-    console.error("[Trips] UpdateStatus:", e?.message);
+    log.error({ err: e }, "[Trips] UpdateStatus");
     res.status(500).json({ error: "Internal server error" });
   }
 }));
@@ -290,11 +291,11 @@ tripsRouter.post("/invitations/send-all", asyncHandler(async (req: Request, res:
           eventText: `Trip invitations sent to ${sent} participants`,
         });
       } catch (e: any) {
-        console.error("[Nudge] Event trigger:", e?.message);
+        log.error({ err: e }, "[Nudge] Event trigger");
       }
     }
   } catch (e: any) {
-    console.error("[Trips] SendAll:", e?.message);
+    log.error({ err: e }, "[Trips] SendAll");
     res.status(500).json({ error: e?.message || "Internal server error" });
   }
 }));
@@ -307,7 +308,7 @@ tripsRouter.get("/list", asyncHandler(async (req: Request, res: Response) => {
     const projects = await tripsService.listByUser(userId);
     res.json(projects);
   } catch (e: any) {
-    console.error("[Trips] List:", e?.message);
+    log.error({ err: e }, "[Trips] List");
     res.status(500).json({ error: "Internal server error" });
   }
 }));
@@ -333,7 +334,7 @@ tripsRouter.get("/detail/:id", asyncHandler(async (req: Request, res: Response) 
 
     res.json({ project, tasks, locations, participants });
   } catch (e: any) {
-    console.error("[Trips] Detail:", e?.message);
+    log.error({ err: e }, "[Trips] Detail");
     res.status(500).json({ error: "Internal server error" });
   }
 }));
@@ -361,7 +362,7 @@ tripsRouter.post("/detail", asyncHandler(async (req: Request, res: Response) => 
 
     res.json({ project, tasks, locations, participants });
   } catch (e: any) {
-    console.error("[Trips] Detail (POST):", e?.message);
+    log.error({ err: e }, "[Trips] Detail (POST)");
     res.status(500).json({ error: "Internal server error" });
   }
 }));
@@ -414,7 +415,7 @@ tripsRouter.post("/update", asyncHandler(async (req: Request, res: Response) => 
 
     res.json(result);
   } catch (e: any) {
-    console.error("[Trips] Update:", e?.message);
+    log.error({ err: e }, "[Trips] Update");
     res.status(500).json({ error: "Internal server error" });
   }
 }));
@@ -436,7 +437,7 @@ tripsRouter.post("/delete", asyncHandler(async (req: Request, res: Response) => 
     await tripsService.delete(id);
     res.json({ ok: true });
   } catch (e: any) {
-    console.error("[Trips] Delete:", e?.message);
+    log.error({ err: e }, "[Trips] Delete");
     res.status(500).json({ error: "Internal server error" });
   }
 }));
@@ -451,10 +452,10 @@ tripsRouter.post("/unfreeze-all", asyncHandler(async (req: Request, res: Respons
       [clerkUserId]
     );
 
-    console.log(`[Trips] Unfreeze-all: user=${clerkUserId}, unfrozen=${count}`);
+    log.info({ clerkUserId, count }, "[Trips] Unfreeze-all");
     res.json({ ok: true, unfrozen: count });
   } catch (e: any) {
-    console.error("[Trips] Unfreeze-all:", e?.message);
+    log.error({ err: e }, "[Trips] Unfreeze-all");
     res.status(500).json({ error: "Internal server error" });
   }
 }));

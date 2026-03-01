@@ -1,3 +1,4 @@
+import { log } from "../../lib/pino-logger";
 import { openaiClient } from "../../lib/openai";
 import { airtable } from "../../lib/airtable";
 
@@ -43,7 +44,7 @@ export async function generateNudgeMessage(input: NudgeMessageInput): Promise<Nu
   try {
     const promptText = await airtable.getPrompt("nudge_generator");
     if (!promptText) {
-      console.warn("[NudgeAI] Prompt not found, using fallback");
+      log.warn("[NudgeAI] Prompt not found, using fallback");
       return getFallback(input.triggerType);
     }
 
@@ -76,7 +77,7 @@ export async function generateNudgeMessage(input: NudgeMessageInput): Promise<Nu
     const raw = response.choices[0]?.message?.content || "";
     return parseAIResponse(raw, input.triggerType);
   } catch (err: any) {
-    console.error("[NudgeAI] Generation failed:", err?.message);
+    log.error({ err }, "[NudgeAI] Generation failed");
     return getFallback(input.triggerType);
   }
 }
@@ -90,7 +91,7 @@ function parseAIResponse(raw: string, triggerType: string): NudgeMessage {
       return { subject: String(parsed.subject).slice(0, 300), body: String(parsed.body).slice(0, 1000) };
     }
   } catch {}
-  console.warn("[NudgeAI] Failed to parse AI response, using fallback");
+  log.warn("[NudgeAI] Failed to parse AI response, using fallback");
   return getFallback(triggerType);
 }
 

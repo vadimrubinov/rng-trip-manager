@@ -1,3 +1,4 @@
+import { log } from "../lib/pino-logger";
 import { nanoid } from "nanoid";
 import { query, queryOne, execute } from "../db/pool";
 import { TripParticipantRow, ParticipantRole, ParticipantStatus } from "../types";
@@ -81,7 +82,7 @@ async function sendInvitationEmail(
       } catch {}
     }
   } catch (err: any) {
-    console.error("[Participants] Email send error:", err?.message);
+    log.error({ err }, "[Participants] Email send error");
   }
 }
 

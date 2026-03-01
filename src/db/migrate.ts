@@ -1,3 +1,4 @@
+import { log } from "../lib/pino-logger";
 import { pool } from "./pool";
 
 const DDL = `
@@ -241,12 +242,12 @@ export async function runMigrations(): Promise<void> {
     await client.query(DDL);
 
     if (existingCount === EXPECTED_TABLES.length) {
-      console.log(`[DB] Tables already exist (${existingCount}/${EXPECTED_TABLES.length}), migration skipped`);
+      log.info(`[DB] Tables already exist (${existingCount}/${EXPECTED_TABLES.length}), migration skipped`);
     } else {
-      console.log(`[DB] Tables created (${existingCount} existed, ${EXPECTED_TABLES.length - existingCount} new)`);
+      log.info(`[DB] Tables created (${existingCount} existed, ${EXPECTED_TABLES.length - existingCount} new)`);
     }
   } catch (err: any) {
-    console.error("[DB] Migration error:", err.message);
+    log.error({ err }, "[DB] Migration error");
     throw err;
   } finally {
     client.release();

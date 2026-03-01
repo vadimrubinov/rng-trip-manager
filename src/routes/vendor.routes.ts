@@ -1,3 +1,4 @@
+import { log } from "../lib/pino-logger";
 import { Router, Request, Response } from "express";
 import { asyncHandler } from "../lib/async-handler";
 import { tripsService } from "../services/trips.service";
@@ -111,7 +112,7 @@ vendorRouter.post("/inquiry", asyncHandler(async (req: Request, res: Response) =
     }
 
     if (!emailResult.success) {
-      console.error("[VendorInquiry] Email failed:", emailResult.error);
+      log.error({ error: emailResult.error }, "[VendorInquiry] Email failed");
       // Still saved in DB with status 'sent' — can retry later
     }
 
@@ -139,7 +140,7 @@ vendorRouter.post("/inquiry", asyncHandler(async (req: Request, res: Response) =
       emailSuccess: emailResult.success,
     });
   } catch (err: any) {
-    console.error("[VendorInquiry] Error:", err?.message);
+    log.error({ err }, "[VendorInquiry] Error");
     return res.status(500).json({ error: err?.message || "Internal error" });
   }
 }));
@@ -185,7 +186,7 @@ vendorRouter.post("/inquiry/preview", asyncHandler(async (req: Request, res: Res
       vendorEmail: vendor.email,
     });
   } catch (err: any) {
-    console.error("[VendorInquiry Preview] Error:", err?.message);
+    log.error({ err }, "[VendorInquiry Preview] Error");
     return res.status(500).json({ error: err?.message || "Internal error" });
   }
 }));
@@ -205,7 +206,7 @@ vendorRouter.get("/inquiries/:projectId", asyncHandler(async (req: Request, res:
     const inquiries = await vendorInquiryService.listByProject(projectId);
     return res.json({ inquiries });
   } catch (err: any) {
-    console.error("[VendorInquiry List] Error:", err?.message);
+    log.error({ err }, "[VendorInquiry List] Error");
     return res.status(500).json({ error: err?.message || "Internal error" });
   }
 }));

@@ -1,3 +1,4 @@
+import { log } from "../../lib/pino-logger";
 import { ENV } from "../../config/env";
 import { airtable } from "../../lib/airtable";
 import { renderEmail, interpolateVariables } from "./email.renderer";
@@ -37,7 +38,7 @@ async function sendViaResend(
   replyTo?: string
 ): Promise<EmailResult> {
   if (!ENV.RESEND_API_KEY) {
-    console.warn("[Email] RESEND_API_KEY not configured — skipping send");
+    log.warn("[Email] RESEND_API_KEY not configured — skipping send");
     return { success: false, error: "Email not configured" };
   }
 
@@ -55,7 +56,7 @@ async function sendViaResend(
 
   if (!resp.ok) {
     const errBody = await resp.text();
-    console.error(`[Email] Resend ${resp.status}:`, errBody);
+    log.error({ status: resp.status, errBody }, "[Email] Resend error");
     return { success: false, error: `Resend ${resp.status}: ${errBody}` };
   }
 
@@ -95,7 +96,7 @@ export const emailService = {
 
       return await sendViaResend(to, fromAddr, subject, html, replyTo);
     } catch (err: any) {
-      console.error("[Email] sendTemplate error:", err?.message);
+      log.error({ err }, "[Email] sendTemplate error");
       return { success: false, error: err?.message || "Unknown error" };
     }
   },
@@ -156,7 +157,7 @@ export const emailService = {
 
       return await sendViaResend(to, fromAddr, subject, html, replyTo);
     } catch (err: any) {
-      console.error("[Email] sendTemplateWithOverrides error:", err?.message);
+      log.error({ err }, "[Email] sendTemplateWithOverrides error");
       return { success: false, error: err?.message || "Unknown error" };
     }
   },

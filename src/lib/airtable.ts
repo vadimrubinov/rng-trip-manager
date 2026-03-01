@@ -1,4 +1,6 @@
+import { log } from "../lib/pino-logger";
 import { ENV } from "../config/env";
+import { withRetry } from "./retry";
 
 const HEADERS = {
   Authorization: `Bearer ${ENV.AIRTABLE_API_KEY}`,
@@ -6,26 +8,41 @@ const HEADERS = {
 };
 
 async function getRecord(baseId: string, table: string, recordId: string): Promise<any> {
-  const url = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(table)}/${recordId}`;
-  const res = await fetch(url, { headers: HEADERS });
-  if (!res.ok) throw new Error(`Airtable ${res.status}: ${await res.text()}`);
-  return res.json();
+  return withRetry(
+    async () => {
+      const url = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(table)}/${recordId}`;
+      const res = await fetch(url, { headers: HEADERS, signal: AbortSignal.timeout(10000) });
+      if (!res.ok) throw new Error(`Airtable ${res.status}: ${await res.text()}`);
+      return res.json();
+    },
+    { operationName: `airtable.getRecord(${table})` }
+  );
 }
 
 async function findRecords(baseId: string, table: string, formula: string, maxRecords = 10): Promise<any[]> {
-  const url = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(table)}?filterByFormula=${encodeURIComponent(formula)}&maxRecords=${maxRecords}`;
-  const res = await fetch(url, { headers: HEADERS });
-  if (!res.ok) throw new Error(`Airtable ${res.status}: ${await res.text()}`);
-  const data: any = await res.json();
-  return data.records || [];
+  return withRetry(
+    async () => {
+      const url = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(table)}?filterByFormula=${encodeURIComponent(formula)}&maxRecords=${maxRecords}`;
+      const res = await fetch(url, { headers: HEADERS, signal: AbortSignal.timeout(10000) });
+      if (!res.ok) throw new Error(`Airtable ${res.status}: ${await res.text()}`);
+      const data: any = await res.json();
+      return data.records || [];
+    },
+    { operationName: `airtable.findRecords(${table})` }
+  );
 }
 
 async function listRecords(baseId: string, table: string, maxRecords = 100): Promise<any[]> {
-  const url = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(table)}?maxRecords=${maxRecords}`;
-  const res = await fetch(url, { headers: HEADERS });
-  if (!res.ok) throw new Error(`Airtable ${res.status}: ${await res.text()}`);
-  const data: any = await res.json();
-  return data.records || [];
+  return withRetry(
+    async () => {
+      const url = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(table)}?maxRecords=${maxRecords}`;
+      const res = await fetch(url, { headers: HEADERS, signal: AbortSignal.timeout(10000) });
+      if (!res.ok) throw new Error(`Airtable ${res.status}: ${await res.text()}`);
+      const data: any = await res.json();
+      return data.records || [];
+    },
+    { operationName: `airtable.listRecords(${table})` }
+  );
 }
 
 export async function getNudgeSettings(): Promise<Record<string, string>> {
@@ -44,7 +61,7 @@ export async function getNudgeSettings(): Promise<Record<string, string>> {
     }
     return settings;
   } catch (e: any) {
-    console.error("[Airtable] Failed to load Nudge settings:", e?.message);
+    log.error({ err: e }, "[Airtable] Failed to load Nudge settings");
     return {};
   }
 }
@@ -88,7 +105,7 @@ export const airtable = {
       }
       return settings;
     } catch (e: any) {
-      console.error("[Airtable] Failed to load Email_Settings:", e?.message);
+      log.error({ err: e }, "[Airtable] Failed to load Email_Settings");
       return {};
     }
   },
@@ -108,7 +125,7 @@ export const airtable = {
         bodyHtml: fields.Body_HTML || "",
       };
     } catch (e: any) {
-      console.error("[Airtable] Failed to load Email_Template:", e?.message);
+      log.error({ err: e }, "[Airtable] Failed to load Email_Template");
       return null;
     }
   },
@@ -137,7 +154,7 @@ export const airtable = {
         reviews: f.Reviews_Count ?? null,
       };
     } catch (e: any) {
-      console.error("[Airtable] Failed to get vendor:", e?.message);
+      log.error({ err: e }, "[Airtable] Failed to get vendor");
       return null;
     }
   },
@@ -152,7 +169,7 @@ export const airtable = {
       );
       return records[0]?.fields?.value ?? null;
     } catch (e: any) {
-      console.error("[Airtable] Failed to get Chat_Setting:", e?.message);
+      log.error({ err: e }, "[Airtable] Failed to get Chat_Setting");
       return null;
     }
   },

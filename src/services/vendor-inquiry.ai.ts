@@ -1,3 +1,4 @@
+import { log } from "../lib/pino-logger";
 import { airtable } from "../lib/airtable";
 import { openaiClient } from "../lib/openai";
 
@@ -59,7 +60,7 @@ export async function generateVendorInquiry(ctx: InquiryContext): Promise<Genera
   try {
     parsed = JSON.parse(text.replace(/```json\n?|```\n?/g, "").trim());
   } catch {
-    console.error("[VendorInquiry AI] Invalid JSON:", text.slice(0, 300));
+    log.error({ preview: text.slice(0, 300) }, "[VendorInquiry AI] Invalid JSON");
     // Fallback: use entire text as body
     return {
       subject: `Fishing charter inquiry — ${ctx.tripTitle}`,
@@ -114,7 +115,7 @@ export async function classifyVendorReply(ctx: {
   try {
     let systemPrompt = await airtable.getPrompt("vendor_reply_classifier");
     if (!systemPrompt) {
-      console.warn("[VendorReply AI] Prompt not found in Airtable, using fallback");
+      log.warn("[VendorReply AI] Prompt not found in Airtable, using fallback");
       systemPrompt = FALLBACK_CLASSIFIER_PROMPT;
     }
 
@@ -144,7 +145,7 @@ export async function classifyVendorReply(ctx: {
       suggestedAction: parsed.suggestedAction || "Review manually",
     };
   } catch (err: any) {
-    console.error("[VendorReply AI] Classification error:", err?.message);
+    log.error({ err }, "[VendorReply AI] Classification error");
     return fallback;
   }
 }

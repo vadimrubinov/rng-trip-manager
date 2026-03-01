@@ -1,3 +1,4 @@
+import { log } from "../lib/pino-logger";
 import { Router, Request, Response } from "express";
 import { asyncHandler } from "../lib/async-handler";
 import { tripsService } from "../services/trips.service";
@@ -96,7 +97,7 @@ publicRouter.get("/:slug", asyncHandler(async (req: Request, res: Response) => {
       })),
     });
   } catch (e: any) {
-    console.error("[Public] Get trip:", e?.message);
+    log.error({ err: e }, "[Public] Get trip");
     res.status(500).json({ error: "Internal server error" });
   }
 }));
@@ -124,7 +125,7 @@ publicRouter.get("/:slug/invite/:token", asyncHandler(async (req: Request, res: 
       locations,
     });
   } catch (e: any) {
-    console.error("[Public] Get invite:", e?.message);
+    log.error({ err: e }, "[Public] Get invite");
     res.status(500).json({ error: "Internal server error" });
   }
 }));

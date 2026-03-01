@@ -1,3 +1,4 @@
+import { log } from "../lib/pino-logger";
 import { Pool, QueryResult } from "pg";
 import { ENV } from "../config/env";
 
@@ -9,7 +10,7 @@ export const pool = new Pool({
 });
 
 pool.on("error", (err) => {
-  console.error("[DB] Pool error:", err.message);
+  log.error({ err }, "[DB] Pool error");
 });
 
 export async function query<T = any>(sql: string, params?: any[]): Promise<T[]> {

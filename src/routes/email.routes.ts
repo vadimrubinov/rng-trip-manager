@@ -1,3 +1,4 @@
+import { log } from "../lib/pino-logger";
 import { Router, Request, Response } from "express";
 import { asyncHandler } from "../lib/async-handler";
 import { emailService } from "../services/email/email.service";
@@ -32,7 +33,7 @@ emailRouter.post("/test", asyncHandler(async (req: Request, res: Response) => {
       html_preview: rendered.html,
     });
   } catch (e: any) {
-    console.error("[Email] Test endpoint:", e?.message);
+    log.error({ err: e }, "[Email] Test endpoint");
     res.status(500).json({ success: false, error: e?.message || "Internal error" });
   }
 }));
@@ -56,7 +57,7 @@ emailRouter.post("/preview", asyncHandler(async (req: Request, res: Response) =>
 
     res.json({ html: result.html });
   } catch (e: any) {
-    console.error("[Email] Preview endpoint:", e?.message);
+    log.error({ err: e }, "[Email] Preview endpoint");
     res.status(500).json({ error: e?.message || "Internal error" });
   }
 }));

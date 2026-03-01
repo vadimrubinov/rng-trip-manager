@@ -1,3 +1,4 @@
+import { log } from "../lib/pino-logger";
 import { airtable } from "../lib/airtable";
 import { generateText } from "../lib/openai";
 import { GeneratedPlan, GeneratePlanRequest, CreateTaskRequest, CreateLocationRequest } from "../types";
@@ -36,7 +37,7 @@ export const plannerService = {
     try {
       parsed = JSON.parse(text.replace(/```json\n?|```\n?/g, "").trim());
     } catch {
-      console.error("[Planner] Invalid JSON:", text.slice(0, 500));
+      log.error({ preview: text.slice(0, 500) }, "[Planner] Invalid JSON");
       throw new Error("Trip Planner returned invalid JSON");
     }
 

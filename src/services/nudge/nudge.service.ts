@@ -1,3 +1,4 @@
+import { log } from "../../lib/pino-logger";
 import { query, queryOne, execute } from "../../db/pool";
 import { emailService } from "../email/email.service";
 import { eventsService } from "../events.service";
@@ -29,7 +30,7 @@ export async function loadNudgeSettings(): Promise<NudgeSettings> {
     settingsCache = { data: settings, ts: Date.now() };
     return settings;
   } catch (err: any) {
-    console.error("[Nudge] Failed to load settings:", err?.message);
+    log.error({ err }, "[Nudge] Failed to load settings");
     return DEFAULT_NUDGE_SETTINGS;
   }
 }
@@ -73,12 +74,12 @@ export const nudgeService = {
     const results = { processed: 0, notifications: [] as string[], errors: [] as string[] };
 
     if (!settings.NUDGE_ENABLED) {
-      console.log("[NudgeCron] Disabled via settings");
+      log.info("[NudgeCron] Disabled via settings");
       return results;
     }
 
     if (isQuietHours(settings)) {
-      console.log("[NudgeCron] Quiet hours — skipping");
+      log.info("[NudgeCron] Quiet hours — skipping");
       return results;
     }
 
@@ -88,7 +89,7 @@ export const nudgeService = {
     );
 
     if (projects.length === 0) {
-      console.log("[NudgeCron] No active projects");
+      log.info("[NudgeCron] No active projects");
       return results;
     }
 
@@ -205,7 +206,7 @@ export const nudgeService = {
       }
     }
 
-    console.log(`[NudgeCron] ${candidates.length} candidates from ${projects.length} projects`);
+    log.info({ candidates: candidates.length, projects: projects.length }, "[NudgeCron] Candidates found");
 
     // Process candidates
     for (const candidate of candidates) {
@@ -311,13 +312,13 @@ export const nudgeService = {
 
           results.processed++;
         } catch (err: any) {
-          console.error(`[NudgeCron] Error processing candidate:`, err?.message);
+          log.error({ err }, "[NudgeCron] Error processing candidate");
           results.errors.push(`${candidate.triggerType}/${candidate.projectTitle}: ${err?.message}`);
         }
       }
     }
 
-    console.log(`[NudgeCron] Done: ${results.processed} processed, ${results.notifications.length} emails, ${results.errors.length} errors`);
+    log.info({ processed: results.processed, notifications: results.notifications.length, errors: results.errors.length }, "[NudgeCron] Done");
     return results;
   },
 
@@ -407,7 +408,7 @@ export const nudgeService = {
         event_text: params.eventText,
       });
     } catch (err: any) {
-      console.error("[Nudge] triggerEvent error:", err?.message);
+      log.error({ err }, "[Nudge] triggerEvent error");
     }
   },
 };

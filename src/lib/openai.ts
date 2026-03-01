@@ -1,14 +1,15 @@
+import { log } from "../lib/pino-logger";
 import OpenAI from "openai";
 import { ENV } from "../config/env";
+import { withRetry } from "./retry";
 
-const client = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
+const client = new OpenAI({ apiKey: ENV.OPENAI_API_KEY, timeout: 60000 });
 
 export { client as openaiClient };
 
 export async function generateText(systemPrompt: string, userMessage: string): Promise<string> {
-  const MAX_RETRIES = 3;
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    try {
+  return withRetry(
+    async () => {
       const response = await client.chat.completions.create({
         model: "gpt-4o",
         temperature: 0.3,
@@ -18,11 +19,7 @@ export async function generateText(systemPrompt: string, userMessage: string): P
         ],
       });
       return response.choices[0]?.message?.content || "";
-    } catch (err: any) {
-      console.error(`[OpenAI] Attempt ${attempt}/${MAX_RETRIES} failed:`, err?.message);
-      if (attempt === MAX_RETRIES) throw err;
-      await new Promise(r => setTimeout(r, 1000 * attempt));
-    }
-  }
-  throw new Error("OpenAI: all retries failed");
+    },
+    { operationName: "openai.generateText" }
+  );
 }

@@ -1,3 +1,4 @@
+import { log } from "../lib/pino-logger";
 import { Router, Request, Response } from "express";
 import { asyncHandler } from "../lib/async-handler";
 import { Resend } from "resend";
@@ -32,22 +33,22 @@ webhookRouter.post("/inbound-email", asyncHandler(async (req: Request, res: Resp
           webhookSecret: ENV.RESEND_WEBHOOK_SECRET,
         });
       } catch (err: any) {
-        console.error("[Webhook] Signature verification failed:", err?.message);
+        log.error({ err }, "[Webhook] Signature verification failed");
         return res.status(401).json({ error: "Invalid signature" });
       }
     } else {
-      console.warn("[Webhook] No RESEND_WEBHOOK_SECRET — skipping verification (dev mode)");
+      log.warn("[Webhook] No RESEND_WEBHOOK_SECRET — skipping verification (dev mode)");
       event = req.body;
     }
 
     // 2. Check event type
     if (event.type !== "email.received") {
-      console.log(`[Webhook] Ignoring event type: ${event.type}`);
+      log.info({ eventType: event.type }, "[Webhook] Ignoring event type");
       return res.json({ ok: true });
     }
 
     const data = event.data;
-    console.log(`[Webhook] Inbound email from=${data.from}, to=${JSON.stringify(data.to)}, subject=${data.subject}`);
+    log.info({ from: data.from, to: data.to, subject: data.subject }, "[Webhook] Inbound email");
 
     // 3. Extract inquiry ID from to addresses
     const toAddresses: string[] = Array.isArray(data.to) ? data.to : [data.to];
@@ -61,14 +62,14 @@ webhookRouter.post("/inbound-email", asyncHandler(async (req: Request, res: Resp
     }
 
     if (!inquiryId) {
-      console.log("[Webhook] No matching inquiry address in to:", toAddresses);
+      log.info({ toAddresses }, "[Webhook] No matching inquiry address in to");
       return res.json({ ok: true });
     }
 
     // 4. Find inquiry in DB
     const inquiry = await vendorInquiryService.findById(inquiryId);
     if (!inquiry) {
-      console.warn(`[Webhook] Inquiry not found: ${inquiryId}`);
+      log.warn({ inquiryId }, "[Webhook] Inquiry not found");
       return res.json({ ok: true });
     }
 
@@ -77,7 +78,7 @@ webhookRouter.post("/inbound-email", asyncHandler(async (req: Request, res: Resp
     if (emailId) {
       const existing = await vendorInquiryService.findByResendInboundEmailId(emailId);
       if (existing) {
-        console.log(`[Webhook] Duplicate email_id ${emailId}, skipping`);
+        log.info({ emailId }, "[Webhook] Duplicate email_id, skipping");
         return res.json({ ok: true });
       }
     }
@@ -92,7 +93,7 @@ webhookRouter.post("/inbound-email", asyncHandler(async (req: Request, res: Resp
         replyText = (emailContent as any)?.text || null;
         replyHtml = (emailContent as any)?.html || null;
       } catch (err: any) {
-        console.error("[Webhook] Failed to fetch email content:", err?.message);
+        log.error({ err }, "[Webhook] Failed to fetch email content");
         // Fallback: save what we have from webhook
       }
     }
@@ -113,7 +114,7 @@ webhookRouter.post("/inbound-email", asyncHandler(async (req: Request, res: Resp
       resendInboundEmailId: emailId || undefined,
     });
 
-    console.log(`[Webhook] Reply saved for inquiry ${inquiryId}`);
+    log.info({ inquiryId }, "[Webhook] Reply saved for inquiry");
 
     // 8. AI classification (sync, ~1-2 sec)
     const classification = await classifyVendorReply({
@@ -129,7 +130,7 @@ webhookRouter.post("/inbound-email", asyncHandler(async (req: Request, res: Resp
       [inquiryId, classification.classification, classification.summary]
     );
 
-    console.log(`[Webhook] Classification: ${classification.classification} — ${classification.summary}`);
+    log.info({ classification: classification.classification, summary: classification.summary }, "[Webhook] Classification");
 
     // 9. Notification — fire-and-forget
     (async () => {
@@ -162,19 +163,19 @@ webhookRouter.post("/inbound-email", asyncHandler(async (req: Request, res: Resp
             });
           }
 
-          console.log(`[Webhook] Notification sent to organizer ${organizer.id}`);
+          log.info({ organizerId: organizer.id }, "[Webhook] Notification sent to organizer");
         } else {
-          console.warn(`[Webhook] No organizer found for project ${inquiry.project_id}`);
+          log.warn({ projectId: inquiry.project_id }, "[Webhook] No organizer found for project");
         }
       } catch (err: any) {
-        console.error("[Webhook] Notification error:", err?.message);
+        log.error({ err }, "[Webhook] Notification error");
       }
     })();
 
     // 10. Return 200
     return res.json({ ok: true });
   } catch (err: any) {
-    console.error("[Webhook] Unhandled error:", err?.message);
+    log.error({ err }, "[Webhook] Unhandled error");
     // Still return 200 to prevent Resend retries on our errors
     return res.json({ ok: true });
   }
