@@ -339,6 +339,171 @@ tripsRouter.get("/detail/:id", asyncHandler(async (req: Request, res: Response) 
   }
 }));
 
+// ── Task CRUD ──
+
+tripsRouter.post("/tasks/create", asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return noAuth(res);
+
+    const { projectId, title, type, description, deadline, sortOrder } = req.body;
+    if (!projectId || !title) return res.status(400).json({ error: "projectId and title required" });
+
+    const project = await tripsService.getById(projectId);
+    if (!project) return res.status(404).json({ error: "Trip not found" });
+    if (project.user_id !== userId) return res.status(403).json({ error: "Forbidden" });
+
+    const task = await tasksService.create(projectId, {
+      title, type: type || "custom", description, deadline, sortOrder,
+    });
+    res.json({ task });
+  } catch (e: any) {
+    log.error({ err: e }, "[Tasks] Create");
+    res.status(500).json({ error: "Internal server error" });
+  }
+}));
+
+tripsRouter.post("/tasks/update", asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return noAuth(res);
+
+    const { id, projectId, title, description, deadline, status, sortOrder, type } = req.body;
+    if (!id) return res.status(400).json({ error: "id required" });
+
+    const task = await tasksService.getById(id);
+    if (!task) return res.status(404).json({ error: "Task not found" });
+
+    const project = await tripsService.getById(task.project_id);
+    if (!project || project.user_id !== userId) return res.status(403).json({ error: "Forbidden" });
+
+    const updated = await tasksService.update(id, { title, description, deadline, status, sortOrder, type });
+    res.json({ task: updated });
+  } catch (e: any) {
+    log.error({ err: e }, "[Tasks] Update");
+    res.status(500).json({ error: "Internal server error" });
+  }
+}));
+
+tripsRouter.post("/tasks/complete", asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return noAuth(res);
+
+    const { id } = req.body;
+    if (!id) return res.status(400).json({ error: "id required" });
+
+    const task = await tasksService.getById(id);
+    if (!task) return res.status(404).json({ error: "Task not found" });
+
+    const project = await tripsService.getById(task.project_id);
+    if (!project || project.user_id !== userId) return res.status(403).json({ error: "Forbidden" });
+
+    // Toggle: if completed → pending, else → completed
+    let updated;
+    if (task.status === "completed") {
+      updated = await tasksService.update(id, { status: "pending" });
+    } else {
+      updated = await tasksService.complete(id);
+    }
+    res.json({ task: updated });
+  } catch (e: any) {
+    log.error({ err: e }, "[Tasks] Complete");
+    res.status(500).json({ error: "Internal server error" });
+  }
+}));
+
+tripsRouter.post("/tasks/delete", asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return noAuth(res);
+
+    const { id } = req.body;
+    if (!id) return res.status(400).json({ error: "id required" });
+
+    const task = await tasksService.getById(id);
+    if (!task) return res.status(404).json({ error: "Task not found" });
+
+    const project = await tripsService.getById(task.project_id);
+    if (!project || project.user_id !== userId) return res.status(403).json({ error: "Forbidden" });
+
+    await tasksService.delete(id);
+    res.json({ ok: true });
+  } catch (e: any) {
+    log.error({ err: e }, "[Tasks] Delete");
+    res.status(500).json({ error: "Internal server error" });
+  }
+}));
+
+// ── Location CRUD ──
+
+tripsRouter.post("/locations/create", asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return noAuth(res);
+
+    const { projectId, name, type, latitude, longitude, dayNumber, sortOrder, notes, vendorRecordId } = req.body;
+    if (!projectId || !name) return res.status(400).json({ error: "projectId and name required" });
+
+    const project = await tripsService.getById(projectId);
+    if (!project) return res.status(404).json({ error: "Trip not found" });
+    if (project.user_id !== userId) return res.status(403).json({ error: "Forbidden" });
+
+    const location = await locationsService.create(projectId, {
+      name, type: type || "other", latitude, longitude, dayNumber, sortOrder, notes, vendorRecordId,
+    });
+    res.json({ location });
+  } catch (e: any) {
+    log.error({ err: e }, "[Locations] Create");
+    res.status(500).json({ error: "Internal server error" });
+  }
+}));
+
+tripsRouter.post("/locations/update", asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return noAuth(res);
+
+    const { id, name, type, latitude, longitude, dayNumber, sortOrder, notes } = req.body;
+    if (!id) return res.status(400).json({ error: "id required" });
+
+    // Locations don't have project_id getter easily — query directly
+    const rows = await query<any>("SELECT project_id FROM trip_locations WHERE id=$1", [id]);
+    if (!rows.length) return res.status(404).json({ error: "Location not found" });
+
+    const project = await tripsService.getById(rows[0].project_id);
+    if (!project || project.user_id !== userId) return res.status(403).json({ error: "Forbidden" });
+
+    const updated = await locationsService.update(id, { name, type, latitude, longitude, dayNumber, sortOrder, notes });
+    res.json({ location: updated });
+  } catch (e: any) {
+    log.error({ err: e }, "[Locations] Update");
+    res.status(500).json({ error: "Internal server error" });
+  }
+}));
+
+tripsRouter.post("/locations/delete", asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return noAuth(res);
+
+    const { id } = req.body;
+    if (!id) return res.status(400).json({ error: "id required" });
+
+    const rows = await query<any>("SELECT project_id FROM trip_locations WHERE id=$1", [id]);
+    if (!rows.length) return res.status(404).json({ error: "Location not found" });
+
+    const project = await tripsService.getById(rows[0].project_id);
+    if (!project || project.user_id !== userId) return res.status(403).json({ error: "Forbidden" });
+
+    await locationsService.delete(id);
+    res.json({ ok: true });
+  } catch (e: any) {
+    log.error({ err: e }, "[Locations] Delete");
+    res.status(500).json({ error: "Internal server error" });
+  }
+}));
+
 // POST variant: accepts projectId in body (used by bitescout-web and rng-ai-service)
 tripsRouter.post("/detail", asyncHandler(async (req: Request, res: Response) => {
   try {
