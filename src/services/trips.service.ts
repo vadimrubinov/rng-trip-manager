@@ -98,6 +98,14 @@ export const tripsService = {
     );
   },
 
+  async countActiveByUser(userId: string): Promise<number> {
+    const result = await pool.query(
+      `SELECT COUNT(*)::int AS count FROM trip_projects WHERE user_id = $1 AND status IN ('active', 'draft')`,
+      [userId]
+    );
+    return result.rows[0]?.count || 0;
+  },
+
   async updateStatus(
     slug: string,
     status: string,
@@ -128,3 +136,4 @@ export const tripsService = {
     await pool.query(`DELETE FROM trip_projects WHERE id = $1`, [id]);
   },
 };
+
