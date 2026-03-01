@@ -54,7 +54,21 @@ tripsRouter.post("/generate-and-create", asyncHandler(async (req: Request, res: 
       }
     }
 
-    const { scoutId, tripDetails, brief, status: requestedStatus, organizerEmail, organizerName } = req.body;
+    const { scoutId, tripDetails, brief, status: requestedStatus, organizerEmail, organizerName, maxActiveTrips } = req.body;
+
+    // Check trip limit before generating plan
+    if (typeof maxActiveTrips === "number" && maxActiveTrips >= 0) {
+      const currentCount = await tripsService.countActiveByUser(userId);
+      if (currentCount >= maxActiveTrips) {
+        log.info({ userId, currentCount, maxActiveTrips }, "[Trips] Trip limit reached");
+        return res.status(403).json({
+          error: "trip_limit_reached",
+          message: `Your plan allows ${maxActiveTrips} active trip${maxActiveTrips !== 1 ? "s" : ""}. You currently have ${currentCount}.`,
+          currentCount,
+          maxActiveTrips,
+        });
+      }
+    }
 
     // Accept brief as tripDetails alias
     const effectiveTripDetails = tripDetails || brief;
