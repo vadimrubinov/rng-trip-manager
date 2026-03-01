@@ -15,7 +15,7 @@ import { TripParticipantRow } from "../types";
 export const tripsRouter = Router();
 
 function getUserId(req: Request): string | null {
-  const { clerkUserId } = req.body;
+  const clerkUserId = req.body?.clerkUserId || req.query?.clerkUserId;
   return (clerkUserId && typeof clerkUserId === "string") ? clerkUserId : null;
 }
 
