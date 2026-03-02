@@ -9,6 +9,7 @@ import { eventsService } from "../services/events.service";
 import { plannerService } from "../services/planner.service";
 import { emailService } from "../services/email/email.service";
 import { nudgeService } from "../services/nudge/nudge.service";
+import { enqueueEnrichment } from "../services/enrichment.service";
 import { query, queryOne, execute } from "../db/pool";
 import { TripParticipantRow } from "../types";
 
@@ -673,3 +674,31 @@ tripsRouter.post("/unfreeze-all", asyncHandler(async (req: Request, res: Respons
   }
 }));
 
+
+// ── Enrichment queue ──
+
+tripsRouter.post("/enrich-queue", asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const { clerkUserId, projectId, hotelNames, locationHint } = req.body;
+    if (!clerkUserId || !projectId) {
+      return res.status(400).json({ error: "clerkUserId and projectId required" });
+    }
+    if (!hotelNames || !Array.isArray(hotelNames) || hotelNames.length === 0) {
+      return res.status(400).json({ error: "hotelNames array required" });
+    }
+
+    const queued: string[] = [];
+    for (const name of hotelNames) {
+      if (typeof name === "string" && name.trim()) {
+        const queueId = await enqueueEnrichment(projectId, clerkUserId, name.trim(), locationHint || "");
+        queued.push(queueId);
+      }
+    }
+
+    log.info({ clerkUserId, projectId, count: queued.length }, "enrichment.queue_accepted");
+    res.json({ ok: true, queued: queued.length });
+  } catch (e: any) {
+    log.error({ err: e }, "enrichment.queue_error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+}));
