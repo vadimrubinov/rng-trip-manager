@@ -45,6 +45,73 @@ async function listRecords(baseId: string, table: string, maxRecords = 100): Pro
   );
 }
 
+// --- AI Model Config ---
+
+export type ModelConfig = {
+  provider: string;
+  model: string;
+  temperature?: number;
+};
+
+const ROLE_FIELD_MAP: Record<string, string> = {
+  trip_planner: "TripPlanner",
+  nudge_ai: "NudgeAI",
+  vendor_inquiry: "VendorInquiry",
+  vendor_extract: "VendorExtract",
+};
+
+const ROLE_DEFAULTS: Record<string, ModelConfig> = {
+  trip_planner: { provider: "openai", model: "gpt-4o", temperature: 0.3 },
+  nudge_ai: { provider: "openai", model: "gpt-4o-mini", temperature: 0.7 },
+  vendor_inquiry: { provider: "openai", model: "gpt-4o-mini", temperature: 0.3 },
+  vendor_extract: { provider: "openai", model: "gpt-4o-mini", temperature: 0.2 },
+};
+
+const modelCache = new Map<string, { config: ModelConfig; cachedAt: number }>();
+const MODEL_CACHE_TTL = 5 * 60 * 1000; // 5 min
+
+export async function getModel(role: string): Promise<ModelConfig> {
+  const cached = modelCache.get(role);
+  if (cached && Date.now() - cached.cachedAt < MODEL_CACHE_TTL) {
+    return cached.config;
+  }
+
+  const fieldName = ROLE_FIELD_MAP[role];
+  const defaults = ROLE_DEFAULTS[role];
+  if (!fieldName || !defaults) {
+    log.warn({ role }, "[Airtable] Unknown model role, using defaults");
+    return defaults || { provider: "openai", model: "gpt-4o", temperature: 0.3 };
+  }
+
+  try {
+    const records = await findRecords(
+      ENV.AIRTABLE_BASE_ID_CHAT,
+      "AI_Models",
+      `{${fieldName}}=TRUE()`,
+      1
+    );
+    const f = records[0]?.fields;
+    if (!f) {
+      log.warn({ role }, "[Airtable] No active model found, using defaults");
+      modelCache.set(role, { config: defaults, cachedAt: Date.now() });
+      return defaults;
+    }
+
+    const config: ModelConfig = {
+      provider: (f.Provider?.trim?.() || defaults.provider).toLowerCase(),
+      model: f.Model?.trim?.() || defaults.model,
+      temperature: typeof f.Temperature === "number" ? f.Temperature : defaults.temperature,
+    };
+
+    log.info({ role, provider: config.provider, model: config.model, temperature: config.temperature }, "[Airtable] Loaded model config");
+    modelCache.set(role, { config, cachedAt: Date.now() });
+    return config;
+  } catch (e: any) {
+    log.error({ err: e, role }, "[Airtable] Failed to load model, using defaults");
+    return defaults;
+  }
+}
+
 export async function getNudgeSettings(): Promise<Record<string, string>> {
   try {
     const records = await findRecords(

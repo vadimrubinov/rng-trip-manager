@@ -1,5 +1,5 @@
 import { log } from "../lib/pino-logger";
-import { airtable } from "../lib/airtable";
+import { airtable, getModel } from "../lib/airtable";
 import { generateText } from "../lib/openai";
 import { GeneratedPlan, GeneratePlanRequest, CreateTaskRequest, CreateLocationRequest } from "../types";
 import { getTripImages } from "./image.service";
@@ -32,7 +32,8 @@ export const plannerService = {
       throw new Error("Trip planner prompt unavailable — Airtable may be down");
     }
 
-    const text = await generateText(prompt, context);
+    const modelConfig = await getModel("trip_planner");
+    const text = await generateText(prompt, context, modelConfig.model, modelConfig.temperature);
 
     let parsed: any;
     try {

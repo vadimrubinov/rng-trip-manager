@@ -7,12 +7,17 @@ const client = new OpenAI({ apiKey: ENV.OPENAI_API_KEY, timeout: 60000 });
 
 export { client as openaiClient };
 
-export async function generateText(systemPrompt: string, userMessage: string): Promise<string> {
+export async function generateText(
+  systemPrompt: string,
+  userMessage: string,
+  model: string = "gpt-4o",
+  temperature: number = 0.3,
+): Promise<string> {
   return withRetry(
     async () => {
       const response = await client.chat.completions.create({
-        model: "gpt-4o",
-        temperature: 0.3,
+        model,
+        temperature,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userMessage },

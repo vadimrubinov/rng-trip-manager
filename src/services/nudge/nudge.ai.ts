@@ -1,6 +1,6 @@
 import { log } from "../../lib/pino-logger";
 import { openaiClient } from "../../lib/openai";
-import { airtable } from "../../lib/airtable";
+import { airtable, getModel } from "../../lib/airtable";
 
 interface NudgeMessageInput {
   triggerType: string;
@@ -64,9 +64,10 @@ export async function generateNudgeMessage(input: NudgeMessageInput): Promise<Nu
       .map(([k, v]) => `${k}: ${v}`)
       .join("\n");
 
+    const modelConfig = await getModel("nudge_ai");
     const response = await openaiClient.chat.completions.create({
-      model: "gpt-4o-mini",
-      temperature: 0.7,
+      model: modelConfig.model,
+      temperature: modelConfig.temperature ?? 0.7,
       max_tokens: 200,
       messages: [
         { role: "system", content: promptText },

@@ -1,5 +1,5 @@
 import { log } from "../lib/pino-logger";
-import { airtable } from "../lib/airtable";
+import { airtable, getModel } from "../lib/airtable";
 import { openaiClient } from "../lib/openai";
 
 interface InquiryContext {
@@ -44,9 +44,10 @@ export async function generateVendorInquiry(ctx: InquiryContext): Promise<Genera
     .filter(Boolean)
     .join("\n");
 
+  const modelConfig = await getModel("vendor_inquiry");
   const response = await openaiClient.chat.completions.create({
-    model: "gpt-4o-mini",
-    temperature: 0.3,
+    model: modelConfig.model,
+    temperature: modelConfig.temperature ?? 0.3,
     messages: [
       { role: "system", content: prompt },
       { role: "user", content: userContext },
@@ -126,9 +127,10 @@ export async function classifyVendorReply(ctx: {
       `\nVendor's reply:\n${ctx.replyText}`,
     ].join("\n");
 
+    const extractModel = await getModel("vendor_extract");
     const response = await openaiClient.chat.completions.create({
-      model: "gpt-4o-mini",
-      temperature: 0.2,
+      model: extractModel.model,
+      temperature: extractModel.temperature ?? 0.2,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userMessage },
