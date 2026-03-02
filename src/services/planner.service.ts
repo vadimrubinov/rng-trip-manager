@@ -47,6 +47,7 @@ export const plannerService = {
       parsed.project?.region,
       parsed.project?.targetSpecies,
       parsed.project?.tripType,
+      parsed.project?.country,
     );
 
     return {
