@@ -202,6 +202,9 @@ ALTER TABLE trip_vendor_inquiries ADD COLUMN IF NOT EXISTS reply_summary TEXT;
 ALTER TABLE trip_vendor_inquiries ADD COLUMN IF NOT EXISTS reply_raw_html TEXT;
 ALTER TABLE trip_vendor_inquiries ADD COLUMN IF NOT EXISTS resend_inbound_email_id TEXT;
 
+-- Trip images (Pexels)
+ALTER TABLE trip_projects ADD COLUMN IF NOT EXISTS images JSONB DEFAULT '{}';
+
 CREATE OR REPLACE FUNCTION update_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN NEW.updated_at = NOW(); RETURN NEW; END;

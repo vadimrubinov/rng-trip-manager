@@ -7,6 +7,17 @@ export type ParticipantStatus = "invited" | "confirmed" | "declined";
 export type EventActor = "user" | "system" | "agent" | "vendor";
 export type LocationType = "lodge" | "river" | "lake" | "ocean" | "airport" | "city" | "port" | "other";
 
+export interface TripImage {
+  url: string;
+  photographer: string;
+  photographerUrl: string;
+}
+
+export interface TripImages {
+  cover: TripImage | null;
+  bands: (TripImage | null)[];
+}
+
 export interface TripProjectRow {
   id: string; slug: string; user_id: string; scout_id: string | null;
   title: string; status: ProjectStatus;
@@ -19,6 +30,7 @@ export interface TripProjectRow {
   participants_count: number; experience_level: string | null;
   special_requirements: string | null;
   itinerary: ItineraryDay[] | null;
+  images: TripImages | null;
   template_id: string | null;
   payment_status: string; payment_id: string | null;
   created_at: string; updated_at: string;
@@ -81,6 +93,7 @@ export interface CreateTripRequest {
   participantsCount?: number; experienceLevel?: string;
   specialRequirements?: string; templateId?: string;
   itinerary?: ItineraryDay[];
+  images?: TripImages;
 }
 
 export interface CreateTaskRequest {

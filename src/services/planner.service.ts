@@ -2,6 +2,7 @@ import { log } from "../lib/pino-logger";
 import { airtable } from "../lib/airtable";
 import { generateText } from "../lib/openai";
 import { GeneratedPlan, GeneratePlanRequest, CreateTaskRequest, CreateLocationRequest } from "../types";
+import { getTripImages } from "./image.service";
 
 function resolveDeadline(tripStart: string | undefined, relativeDays: number | undefined): string | undefined {
   if (!tripStart || relativeDays === undefined) return undefined;
@@ -41,10 +42,18 @@ export const plannerService = {
       throw new Error("Trip Planner returned invalid JSON");
     }
 
+    // Fetch images from Pexels (non-blocking — fallback to null on error)
+    const images = await getTripImages(
+      parsed.project?.region,
+      parsed.project?.targetSpecies,
+      parsed.project?.tripType,
+    );
+
     return {
       project: {
         title: parsed.project?.title || "Untitled Trip",
         description: parsed.project?.description,
+        coverImageUrl: images.cover?.url || null,
         region: parsed.project?.region,
         country: parsed.project?.country,
         latitude: parsed.project?.latitude,
@@ -58,6 +67,7 @@ export const plannerService = {
         participantsCount: parsed.project?.participantsCount,
         experienceLevel: parsed.project?.experienceLevel,
         itinerary: parsed.itinerary || [],
+        images: images,
       },
       tasks: (parsed.tasks || []).slice(0, 25).map((t: any, i: number): CreateTaskRequest => ({
         type: t.type || "custom",

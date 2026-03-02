@@ -69,6 +69,7 @@ tripsRouter.post("/generate-and-create", asyncHandler(async (req: Request, res: 
       title: plan.project.title || "Untitled Trip",
       scoutId,
       description: plan.project.description,
+      coverImageUrl: plan.project.coverImageUrl,
       region: plan.project.region,
       country: plan.project.country,
       latitude: plan.project.latitude,
@@ -82,6 +83,7 @@ tripsRouter.post("/generate-and-create", asyncHandler(async (req: Request, res: 
       participantsCount: plan.project.participantsCount,
       experienceLevel: plan.project.experienceLevel,
       itinerary: plan.project.itinerary,
+      images: plan.project.images,
     });
 
     // 3. Set requested status (default is already 'draft' from DB)
@@ -551,9 +553,9 @@ tripsRouter.post("/update", asyncHandler(async (req: Request, res: Response) => 
     const userId = getUserId(req);
     if (!userId) return noAuth(res);
 
-    const { id, title, description, region, country, datesStart, datesEnd,
+    const { id, title, description, coverImageUrl, region, country, datesStart, datesEnd,
             targetSpecies, tripType, participantsCount, experienceLevel,
-            budgetMin, budgetMax, itinerary } = req.body;
+            budgetMin, budgetMax, itinerary, images } = req.body;
     if (!id) return res.status(400).json({ error: "id required" });
 
     const project = await tripsService.getById(id);
@@ -568,6 +570,7 @@ tripsRouter.post("/update", asyncHandler(async (req: Request, res: Response) => 
 
     if (title !== undefined) { sets.push(`title = $${i++}`); params.push(title); }
     if (description !== undefined) { sets.push(`description = $${i++}`); params.push(description); }
+    if (coverImageUrl !== undefined) { sets.push(`cover_image_url = $${i++}`); params.push(coverImageUrl); }
     if (region !== undefined) { sets.push(`region = $${i++}`); params.push(region); }
     if (country !== undefined) { sets.push(`country = $${i++}`); params.push(country); }
     if (datesStart !== undefined) { sets.push(`dates_start = $${i++}`); params.push(datesStart); }
@@ -579,6 +582,7 @@ tripsRouter.post("/update", asyncHandler(async (req: Request, res: Response) => 
     if (budgetMin !== undefined) { sets.push(`budget_min = $${i++}`); params.push(budgetMin); }
     if (budgetMax !== undefined) { sets.push(`budget_max = $${i++}`); params.push(budgetMax); }
     if (itinerary !== undefined) { sets.push(`itinerary = $${i++}`); params.push(JSON.stringify(itinerary)); }
+    if (images !== undefined) { sets.push(`images = $${i++}`); params.push(JSON.stringify(images)); }
 
     if (sets.length === 0) {
       return res.status(400).json({ error: "No fields to update" });

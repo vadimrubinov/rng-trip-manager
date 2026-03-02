@@ -21,4 +21,5 @@ export const ENV = {
   RESEND_API_KEY: process.env.RESEND_API_KEY || "",
   RESEND_WEBHOOK_SECRET: process.env.RESEND_WEBHOOK_SECRET || "",
   NUDGE_ENABLED: process.env.NUDGE_ENABLED || "true",
+  PEXELS_API_KEY: process.env.PEXELS_API_KEY || "",
 };

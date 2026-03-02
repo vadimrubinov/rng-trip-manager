@@ -80,6 +80,7 @@ publicRouter.get("/:slug", asyncHandler(async (req: Request, res: Response) => {
         participants_count: project.participants_count,
         experience_level: project.experience_level,
         itinerary: project.itinerary,
+        images: project.images,
         created_at: project.created_at,
       },
       tasks: publicTasks,
