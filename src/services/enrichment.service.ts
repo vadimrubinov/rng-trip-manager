@@ -1,4 +1,3 @@
-import axios from "axios";
 import { pool } from "../db/pool";
 import { log } from "../lib/pino-logger";
 import { ENV } from "../config/env";
@@ -73,29 +72,39 @@ async function tavilySearch(
   const apiKey = ENV.TAVILY_API_KEY;
   if (!apiKey) return { results: [] };
 
-  const { data } = await axios.post(
-    "https://api.tavily.com/search",
-    {
-      api_key: apiKey,
-      query,
-      search_depth: "basic",
-      max_results: Math.min(maxResults, 10),
-      include_answer: true,
-      include_images: includeImages,
-    },
-    { timeout: 30000 }
-  );
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
 
-  return {
-    results: (data.results || []).map((r: any) => ({
-      title: r.title || "",
-      url: r.url || "",
-      content: (r.content || "").slice(0, 1000),
-      score: r.score || 0,
-    })),
-    answer: data.answer || undefined,
-    images: data.images || undefined,
-  };
+  try {
+    const resp = await fetch("https://api.tavily.com/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        api_key: apiKey,
+        query,
+        search_depth: "basic",
+        max_results: Math.min(maxResults, 10),
+        include_answer: true,
+        include_images: includeImages,
+      }),
+      signal: controller.signal,
+    });
+
+    const data: any = await resp.json();
+
+    return {
+      results: (data.results || []).map((r: any) => ({
+        title: r.title || "",
+        url: r.url || "",
+        content: (r.content || "").slice(0, 1000),
+        score: r.score || 0,
+      })),
+      answer: data.answer || undefined,
+      images: data.images || undefined,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 // ── Pexels photo search ──
@@ -105,16 +114,19 @@ async function searchPexelsPhotos(query: string, count: number = 5): Promise<str
   if (!apiKey) return [];
 
   try {
-    const { data } = await axios.get("https://api.pexels.com/v1/search", {
-      headers: { Authorization: apiKey },
-      params: {
-        query,
-        per_page: count,
-        orientation: "landscape",
-        size: "medium",
-      },
-      timeout: 10000,
+    const params = new URLSearchParams({
+      query,
+      per_page: String(count),
+      orientation: "landscape",
+      size: "medium",
     });
+
+    const resp = await fetch(`https://api.pexels.com/v1/search?${params}`, {
+      headers: { Authorization: apiKey },
+      signal: AbortSignal.timeout(10000),
+    });
+
+    const data: any = await resp.json();
 
     return (data.photos || []).map((p: any) => p.src?.large || p.src?.medium || p.src?.original).filter(Boolean);
   } catch (e: any) {
