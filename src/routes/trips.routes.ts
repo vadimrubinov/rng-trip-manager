@@ -622,6 +622,35 @@ tripsRouter.post("/delete", asyncHandler(async (req: Request, res: Response) => 
   }
 }));
 
+tripsRouter.post("/archive", asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return noAuth(res);
+
+    const { slug } = req.body;
+    if (!slug) return res.status(400).json({ error: "slug required" });
+
+    const project = await tripsService.getBySlug(slug);
+    if (!project) return res.status(404).json({ error: "Trip not found" });
+    if (project.user_id !== userId) return res.status(403).json({ error: "Forbidden" });
+    if (project.status !== "active") {
+      return res.status(400).json({ error: "Only active trips can be archived" });
+    }
+
+    const updated = await tripsService.archive(slug);
+
+    await eventsService.log(project.id, "trip_archived", "user", userId, {
+      previous_status: project.status,
+    });
+
+    log.info({ userId, slug }, "[Trips] Archived");
+    res.json({ project: updated });
+  } catch (e: any) {
+    log.error({ err: e }, "[Trips] Archive");
+    res.status(500).json({ error: "Internal server error" });
+  }
+}));
+
 tripsRouter.post("/unfreeze-all", asyncHandler(async (req: Request, res: Response) => {
   try {
     const { clerkUserId } = req.body;

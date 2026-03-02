@@ -132,6 +132,13 @@ export const tripsService = {
     );
   },
 
+  async archive(slug: string): Promise<TripProjectRow | null> {
+    return queryOne(
+      `UPDATE trip_projects SET status = 'archived', updated_at = NOW() WHERE slug = $1 RETURNING *`,
+      [slug]
+    );
+  },
+
   async delete(id: string): Promise<void> {
     await pool.query(`DELETE FROM trip_projects WHERE id = $1`, [id]);
   },
