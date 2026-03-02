@@ -24,6 +24,7 @@ export interface TripProjectRow {
   participants_count?: number;
   experience_level?: string;
   itinerary?: any;
+  images?: any;
   created_at: string;
   updated_at: string;
 }

@@ -68,7 +68,7 @@ async function searchPexels(query: string, perPage: number = 5): Promise<PexelsP
     return [];
   }
 
-  const data: PexelsSearchResponse = await res.json();
+  const data = (await res.json()) as PexelsSearchResponse;
   return data.photos || [];
 }
 

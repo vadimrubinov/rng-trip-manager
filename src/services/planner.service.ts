@@ -53,7 +53,7 @@ export const plannerService = {
       project: {
         title: parsed.project?.title || "Untitled Trip",
         description: parsed.project?.description,
-        coverImageUrl: images.cover?.url || null,
+        coverImageUrl: images.cover?.url || undefined,
         region: parsed.project?.region,
         country: parsed.project?.country,
         latitude: parsed.project?.latitude,
