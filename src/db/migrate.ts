@@ -205,6 +205,24 @@ ALTER TABLE trip_vendor_inquiries ADD COLUMN IF NOT EXISTS resend_inbound_email_
 -- Trip images (Pexels)
 ALTER TABLE trip_projects ADD COLUMN IF NOT EXISTS images JSONB DEFAULT '{}';
 
+-- Enrichment queue for async accommodation enrichment
+CREATE TABLE IF NOT EXISTS trip_enrichment_queue (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id      UUID NOT NULL REFERENCES trip_projects(id) ON DELETE CASCADE,
+    user_id         TEXT NOT NULL,
+    hotel_name      TEXT NOT NULL,
+    location_hint   TEXT NOT NULL DEFAULT '',
+    status          VARCHAR(20) NOT NULL DEFAULT 'pending',
+    attempts        INTEGER NOT NULL DEFAULT 0,
+    result          JSONB,
+    error           TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    processed_at    TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_enrichment_queue_status ON trip_enrichment_queue(status);
+CREATE INDEX IF NOT EXISTS idx_enrichment_queue_project ON trip_enrichment_queue(project_id);
+
 CREATE OR REPLACE FUNCTION update_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
@@ -229,7 +247,7 @@ END $$;
 const EXPECTED_TABLES = [
   "trip_templates", "trip_projects", "trip_participants",
   "trip_tasks", "trip_events", "trip_media", "trip_locations",
-  "trip_notifications", "trip_vendor_inquiries"
+  "trip_notifications", "trip_vendor_inquiries", "trip_enrichment_queue"
 ];
 
 export async function runMigrations(): Promise<void> {
