@@ -9,6 +9,7 @@ import { nudgeRouter } from "./routes/nudge.routes";
 import { vendorRouter } from "./routes/vendor.routes";
 import { webhookRouter } from "./routes/webhook.routes";
 import { nudgeService } from "./services/nudge/nudge.service";
+import { processEnrichmentQueue } from "./services/enrichment.service";
 import { requireApiSecret } from "./middleware/auth";
 import { runMigrations } from "./db/migrate";
 import { pool } from "./db/pool";
@@ -21,6 +22,7 @@ import { deepHealthCheck } from "./lib/health";
 // Interval refs for graceful shutdown
 let draftCleanupInterval: ReturnType<typeof setInterval> | null = null;
 let nudgeInterval: ReturnType<typeof setInterval> | null = null;
+let enrichmentInterval: ReturnType<typeof setInterval> | null = null;
 
 // Airtable settings helper
 async function getAirtableSetting(key: string, defaultValue: string): Promise<string> {
@@ -138,6 +140,20 @@ async function main() {
     }, NUDGE_INTERVAL_MS);
     log.info({ intervalMin: 60 }, "cron.nudge.scheduled");
 
+    // Enrichment queue cron — every 5 minutes
+    const ENRICHMENT_INTERVAL_MS = 5 * 60 * 1000;
+    enrichmentInterval = setInterval(async () => {
+      try {
+        const result = await processEnrichmentQueue();
+        if (result.processed > 0) {
+          log.info({ processed: result.processed, errors: result.errors }, "cron.enrichment.done");
+        }
+      } catch (err: any) {
+        log.error({ err }, "cron.enrichment.error");
+      }
+    }, ENRICHMENT_INTERVAL_MS);
+    log.info({ intervalMin: 5 }, "cron.enrichment.scheduled");
+
     // Run initial cleanup after 5 min
     setTimeout(cleanupDrafts, 5 * 60 * 1000);
   });
@@ -148,6 +164,7 @@ async function main() {
     onShutdown: async () => {
       if (draftCleanupInterval) clearInterval(draftCleanupInterval);
       if (nudgeInterval) clearInterval(nudgeInterval);
+      if (enrichmentInterval) clearInterval(enrichmentInterval);
       log.info("shutdown.intervals_cleared");
       await pool.end();
       log.info("shutdown.pg_pool_closed");
