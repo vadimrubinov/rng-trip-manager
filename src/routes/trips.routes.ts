@@ -39,7 +39,7 @@ tripsRouter.post("/generate-and-create", asyncHandler(async (req: Request, res: 
     const userId = getUserId(req);
     if (!userId) return noAuth(res);
 
-    const { scoutId, tripDetails, brief, status: requestedStatus, organizerEmail, organizerName, maxActiveTrips } = req.body;
+    const { scoutId, tripDetails, brief, rawItinerary, status: requestedStatus, organizerEmail, organizerName, maxActiveTrips } = req.body;
 
     // --- Trip limit check ---
     if (typeof maxActiveTrips === "number" && maxActiveTrips >= 0) {
@@ -58,12 +58,12 @@ tripsRouter.post("/generate-and-create", asyncHandler(async (req: Request, res: 
     // Accept brief as tripDetails alias
     const effectiveTripDetails = tripDetails || brief;
 
-    if (!scoutId && !effectiveTripDetails) {
-      return res.status(400).json({ error: "scoutId or tripDetails/brief required" });
+    if (!scoutId && !effectiveTripDetails && !rawItinerary) {
+      return res.status(400).json({ error: "scoutId, tripDetails/brief, or rawItinerary required" });
     }
 
     // 1. Generate plan
-    const plan = await plannerService.generatePlan({ scoutId, tripDetails: effectiveTripDetails });
+    const plan = await plannerService.generatePlan({ scoutId, tripDetails: effectiveTripDetails, rawItinerary });
 
     // 2. Create project
     const project = await tripsService.create(userId, {
@@ -135,14 +135,14 @@ tripsRouter.post("/generate-plan", asyncHandler(async (req: Request, res: Respon
     const userId = getUserId(req);
     if (!userId) return noAuth(res);
 
-    const { scoutId, tripDetails, brief } = req.body;
+    const { scoutId, tripDetails, brief, rawItinerary } = req.body;
     const effectiveTripDetails = tripDetails || brief;
 
-    if (!scoutId && !effectiveTripDetails) {
-      return res.status(400).json({ error: "scoutId or tripDetails/brief required" });
+    if (!scoutId && !effectiveTripDetails && !rawItinerary) {
+      return res.status(400).json({ error: "scoutId, tripDetails/brief, or rawItinerary required" });
     }
 
-    const plan = await plannerService.generatePlan({ scoutId, tripDetails: effectiveTripDetails });
+    const plan = await plannerService.generatePlan({ scoutId, tripDetails: effectiveTripDetails, rawItinerary });
     res.json(plan);
   } catch (e: any) {
     log.error({ err: e }, "[Trips] GeneratePlan");

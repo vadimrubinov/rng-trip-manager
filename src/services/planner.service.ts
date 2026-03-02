@@ -21,6 +21,11 @@ export const plannerService = {
       if (scout?.transcript) context += `\n\nTranscript:\n${scout.transcript}`;
     }
 
+    if (request.rawItinerary) {
+      const trimmed = request.rawItinerary.slice(0, 12000);
+      context += `\n\nMODE: FOLLOW\n\nUser's day-by-day itinerary (follow this EXACTLY):\n${trimmed}`;
+    }
+
     if (request.tripDetails) {
       context += `\n\nUser details:\n${JSON.stringify(request.tripDetails, null, 2)}`;
     }

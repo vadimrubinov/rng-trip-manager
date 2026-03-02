@@ -119,6 +119,7 @@ export interface GeneratePlanRequest {
     targetSpecies: string[]; tripType: string;
     budget: number; participantsCount: number;
   };
+  rawItinerary?: string;
 }
 
 export interface GeneratedPlan {
