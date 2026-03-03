@@ -312,8 +312,8 @@ async function loadDashboard() {
       '<td>' + total + '/' + target + '</td>' +
       '<td>' + (r.pending || 0) + '</td>' +
       '<td><span class="badge ' + statusClass + '">' + status + '</span></td>' +
-      '<td><button class="btn btn-sm" onclick="startCollectForRegion(\'' + esc(r.region) + '\')">Collect</button> ' +
-      '<button class="btn btn-sm btn-primary" onclick="moderateRegion(\'' + esc(r.region) + '\')">Moderate</button></td>' +
+      '<td><button class="btn btn-sm" onclick="startCollectForRegion(\\'' + esc(r.region) + '\\')">Collect</button> ' +
+      '<button class="btn btn-sm btn-primary" onclick="moderateRegion(\\'' + esc(r.region) + '\\')">Moderate</button></td>' +
       '</tr>';
   }).join('');
 
@@ -497,20 +497,20 @@ function renderModGrid() {
     const catClass = 'cat-' + (p.ai_category || p.category || 'scenery');
     const isSelected = selectedPhotos.has(p.id);
     return '<div class="photo-card' + (isSelected ? ' selected' : '') + '" id="card-' + p.id + '">' +
-      '<input type="checkbox" class="checkbox" ' + (isSelected ? 'checked' : '') + ' onchange="toggleSelect(\'' + p.id + '\')">' +
-      '<img src="' + esc(p.cdn_url) + '" onclick="openLightbox(\'' + esc(p.cdn_url) + '\')" loading="lazy" onerror="this.src=\'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22280%22 height=%22200%22><rect fill=%22%231a1d27%22 width=%22280%22 height=%22200%22/><text fill=%22%238b8fa3%22 x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22>Image Error</text></svg>\'">' +
+      '<input type="checkbox" class="checkbox" ' + (isSelected ? 'checked' : '') + ' onchange="toggleSelect(\\'' + p.id + '\\')">' +
+      '<img src="' + esc(p.cdn_url) + '" onclick="openLightbox(\\'' + esc(p.cdn_url) + '\\')" loading="lazy" onerror="this.src=\\'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22280%22 height=%22200%22><rect fill=%22%231a1d27%22 width=%22280%22 height=%22200%22/><text fill=%22%238b8fa3%22 x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22>Image Error</text></svg>\\'">' +
       '<div class="info">' +
       '<div class="desc">' + esc(p.ai_description || '—') + '</div>' +
       '<div class="meta">' +
       '<span class="score-badge ' + scoreClass + '">' + (p.ai_score || '?') + '</span>' +
-      '<select class="cat-select" onchange="changeCategory(\'' + p.id + '\', this.value)">' +
+      '<select class="cat-select" onchange="changeCategory(\\'' + p.id + '\\', this.value)">' +
       CATEGORIES.map(c => '<option value="' + c + '"' + (c === (p.category || p.ai_category) ? ' selected' : '') + '>' + c + '</option>').join('') +
       '</select>' +
       (p.approved ? '<span class="badge badge-done">Approved</span>' : '<span class="badge badge-empty">Pending</span>') +
       '</div>' +
       '<div class="actions">' +
-      (!p.approved ? '<button class="btn btn-success btn-sm" onclick="approveOne(\'' + p.id + '\')">Approve</button>' : '') +
-      '<button class="btn btn-danger btn-sm" onclick="deleteOne(\'' + p.id + '\', ' + i + ')">Delete</button>' +
+      (!p.approved ? '<button class="btn btn-success btn-sm" onclick="approveOne(\\'' + p.id + '\\')">Approve</button>' : '') +
+      '<button class="btn btn-danger btn-sm" onclick="deleteOne(\\'' + p.id + '\\', ' + i + ')">Delete</button>' +
       '</div></div></div>';
   }).join('');
 }
