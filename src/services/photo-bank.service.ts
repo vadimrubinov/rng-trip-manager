@@ -75,6 +75,9 @@ export interface PhotoQuery {
   source?: PhotoSource;
   limit?: number;
   offset?: number;
+  ai_score_min?: number;
+  ai_score_max?: number;
+  sort_by?: "ai_score" | "created_at";
 }
 
 // ── S3 helpers (using native fetch — no SDK needed) ──
@@ -255,14 +258,23 @@ export async function queryPhotos(q: PhotoQuery): Promise<{ photos: PhotoBankRow
     conditions.push(`source = $${idx++}`);
     values.push(q.source);
   }
+  if (q.ai_score_min !== undefined) {
+    conditions.push(`ai_score >= $${idx++}`);
+    values.push(q.ai_score_min);
+  }
+  if (q.ai_score_max !== undefined) {
+    conditions.push(`ai_score <= $${idx++}`);
+    values.push(q.ai_score_max);
+  }
 
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   const limit = q.limit || 50;
   const offset = q.offset || 0;
+  const orderBy = q.sort_by === "ai_score" ? "ai_score DESC NULLS LAST, created_at DESC" : "approved DESC, created_at DESC";
 
   const [dataRes, countRes] = await Promise.all([
     pool.query(
-      `SELECT * FROM photo_bank ${where} ORDER BY approved DESC, created_at DESC LIMIT $${idx++} OFFSET $${idx++}`,
+      `SELECT * FROM photo_bank ${where} ORDER BY ${orderBy} LIMIT $${idx++} OFFSET $${idx++}`,
       [...values, limit, offset],
     ),
     pool.query(`SELECT COUNT(*)::int as total FROM photo_bank ${where}`, values),
@@ -397,6 +409,107 @@ export async function updatePhoto(
     values,
   );
   return rows[0] || null;
+}
+
+/** Bulk approve photos */
+export async function bulkApprove(ids: string[], approvedBy: string): Promise<number> {
+  if (!ids.length) return 0;
+  const placeholders = ids.map((_, i) => `$${i + 1}`).join(",");
+  const { rowCount } = await pool.query(
+    `UPDATE photo_bank SET approved = TRUE, approved_by = $${ids.length + 1}, approved_at = NOW()
+     WHERE id IN (${placeholders}) AND approved = FALSE`,
+    [...ids, approvedBy],
+  );
+  return rowCount || 0;
+}
+
+/** Bulk reject (delete) photos */
+export async function bulkReject(ids: string[]): Promise<number> {
+  if (!ids.length) return 0;
+  // Get S3 keys first
+  const placeholders = ids.map((_, i) => `$${i + 1}`).join(",");
+  const { rows } = await pool.query(
+    `SELECT id, s3_key FROM photo_bank WHERE id IN (${placeholders})`,
+    ids,
+  );
+
+  // Delete from S3 (best effort)
+  for (const row of rows) {
+    try {
+      await deleteFromS3(row.s3_key);
+    } catch (err) {
+      log.warn({ err, s3Key: row.s3_key }, "photo_bank.bulk_s3_delete_failed");
+    }
+  }
+
+  // Delete from DB
+  const result = await pool.query(
+    `DELETE FROM photo_bank WHERE id IN (${placeholders})`,
+    ids,
+  );
+  return result.rowCount || 0;
+}
+
+/** Region stats — approved count by category per region */
+export async function getRegionStats(): Promise<{
+  regions: {
+    region: string;
+    hero: number;
+    band: number;
+    action: number;
+    scenery: number;
+    fish: number;
+    total: number;
+    pending: number;
+  }[];
+  totals: { total: number; approved: number; pending: number; regions: number };
+}> {
+  const [approvedRes, pendingRes, totalsRes] = await Promise.all([
+    pool.query(
+      `SELECT COALESCE(region, 'unknown') as region, category, COUNT(*)::int as c
+       FROM photo_bank WHERE approved = TRUE
+       GROUP BY region, category ORDER BY region`,
+    ),
+    pool.query(
+      `SELECT COALESCE(region, 'unknown') as region, COUNT(*)::int as c
+       FROM photo_bank WHERE approved = FALSE
+       GROUP BY region ORDER BY region`,
+    ),
+    pool.query(
+      `SELECT COUNT(*)::int as total,
+              SUM(CASE WHEN approved THEN 1 ELSE 0 END)::int as approved
+       FROM photo_bank`,
+    ),
+  ]);
+
+  const regionMap: Record<string, { hero: number; band: number; action: number; scenery: number; fish: number; total: number; pending: number }> = {};
+
+  for (const r of approvedRes.rows) {
+    if (!regionMap[r.region]) regionMap[r.region] = { hero: 0, band: 0, action: 0, scenery: 0, fish: 0, total: 0, pending: 0 };
+    const cat = r.category as string;
+    if (cat in regionMap[r.region]) (regionMap[r.region] as any)[cat] = r.c;
+    regionMap[r.region].total += r.c;
+  }
+
+  for (const r of pendingRes.rows) {
+    if (!regionMap[r.region]) regionMap[r.region] = { hero: 0, band: 0, action: 0, scenery: 0, fish: 0, total: 0, pending: 0 };
+    regionMap[r.region].pending = r.c;
+  }
+
+  const regions = Object.entries(regionMap)
+    .map(([region, stats]) => ({ region, ...stats }))
+    .sort((a, b) => b.total - a.total);
+
+  const t = totalsRes.rows[0];
+  return {
+    regions,
+    totals: {
+      total: t.total || 0,
+      approved: t.approved || 0,
+      pending: (t.total || 0) - (t.approved || 0),
+      regions: regions.length,
+    },
+  };
 }
 
 /** Get stats */

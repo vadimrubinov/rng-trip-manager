@@ -8,6 +8,7 @@ import { emailRouter } from "./routes/email.routes";
 import { nudgeRouter } from "./routes/nudge.routes";
 import { vendorRouter } from "./routes/vendor.routes";
 import { photoBankRouter } from "./routes/photo-bank.routes";
+import { photoBankAdminRouter } from "./routes/photo-bank-admin.routes";
 import { webhookRouter } from "./routes/webhook.routes";
 import { nudgeService } from "./services/nudge/nudge.service";
 import { processEnrichmentQueue } from "./services/enrichment.service";
@@ -103,6 +104,9 @@ async function main() {
 
   // Webhook routes (no auth — verified by signature)
   app.use("/api/webhooks", webhookRouter);
+
+  // Photo Bank Admin (query param auth — like geo-orchestrator)
+  app.use("/admin", photoBankAdminRouter);
 
   // Protected routes (require x-api-secret from bitescout-web)
   app.use("/api/trips", requireApiSecret, tripsRouter);

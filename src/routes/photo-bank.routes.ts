@@ -7,10 +7,13 @@ import {
   updatePhoto,
   getPhotosForTrip,
   getStats,
+  bulkApprove,
+  bulkReject,
+  getRegionStats,
   PhotoCategory,
   PhotoSource,
 } from "../services/photo-bank.service";
-import { collectPhotosSync, startCollect, getCollectJob, getCollectJobs } from "../services/photo-bank-collector.service";
+import { collectPhotosSync, startCollect, getCollectJob, getCollectJobs, stopCollectJob } from "../services/photo-bank-collector.service";
 import { log } from "../lib/pino-logger";
 
 export const photoBankRouter = Router();
@@ -29,8 +32,8 @@ photoBankRouter.get("/stats", async (_req: Request, res: Response) => {
 /** POST /query — search photos with filters */
 photoBankRouter.post("/query", async (req: Request, res: Response) => {
   try {
-    const { region, country, category, species, approved, source, limit, offset } = req.body;
-    const result = await queryPhotos({ region, country, category, species, approved, source, limit, offset });
+    const { region, country, category, species, approved, source, limit, offset, ai_score_min, ai_score_max, sort_by } = req.body;
+    const result = await queryPhotos({ region, country, category, species, approved, source, limit, offset, ai_score_min, ai_score_max, sort_by });
     res.json(result);
   } catch (err: any) {
     log.error({ err }, "photo_bank.query.error");
@@ -160,6 +163,54 @@ photoBankRouter.post("/update", async (req: Request, res: Response) => {
     log.error({ err }, "photo_bank.update.error");
     res.status(500).json({ error: "Failed to update" });
   }
+});
+
+/** POST /bulk-approve — approve multiple photos */
+photoBankRouter.post("/bulk-approve", async (req: Request, res: Response) => {
+  try {
+    const { ids, approved_by } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "ids array is required" });
+
+    const count = await bulkApprove(ids, approved_by || "admin");
+    log.info({ count, approvedBy: approved_by }, "photo_bank.bulk_approved");
+    res.json({ ok: true, approved: count });
+  } catch (err: any) {
+    log.error({ err }, "photo_bank.bulk_approve.error");
+    res.status(500).json({ error: "Bulk approve failed" });
+  }
+});
+
+/** POST /bulk-reject — reject (delete) multiple photos */
+photoBankRouter.post("/bulk-reject", async (req: Request, res: Response) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "ids array is required" });
+
+    const count = await bulkReject(ids);
+    log.info({ count }, "photo_bank.bulk_rejected");
+    res.json({ ok: true, deleted: count });
+  } catch (err: any) {
+    log.error({ err }, "photo_bank.bulk_reject.error");
+    res.status(500).json({ error: "Bulk reject failed" });
+  }
+});
+
+/** GET /region-stats — coverage by region and category */
+photoBankRouter.get("/region-stats", async (_req: Request, res: Response) => {
+  try {
+    const stats = await getRegionStats();
+    res.json(stats);
+  } catch (err: any) {
+    log.error({ err }, "photo_bank.region_stats.error");
+    res.status(500).json({ error: "Failed to get region stats" });
+  }
+});
+
+/** POST /collect-stop/:jobId — stop a running collect job */
+photoBankRouter.post("/collect-stop/:jobId", async (req: Request, res: Response) => {
+  const stopped = stopCollectJob(req.params.jobId);
+  if (!stopped) return res.status(404).json({ error: "Job not found or not running" });
+  res.json({ ok: true, jobId: req.params.jobId, status: "stopped" });
 });
 
 /** POST /collect — collect photo candidates from sources */
