@@ -259,8 +259,18 @@ async function api(method, path, body) {
     headers: { 'Content-Type': 'application/json', 'x-api-secret': API_KEY },
   };
   if (body) opts.body = JSON.stringify(body);
-  const res = await fetch(API_BASE + path, opts);
-  return res.json();
+  try {
+    const res = await fetch(API_BASE + path, opts);
+    if (!res.ok) {
+      const text = await res.text();
+      console.error('API error:', method, path, res.status, text);
+      return { error: text, photos: [], total: 0, regions: [] };
+    }
+    return await res.json();
+  } catch (err) {
+    console.error('API fetch failed:', method, path, err);
+    return { error: err.message, photos: [], total: 0, regions: [] };
+  }
 }
 
 // ── Navigation ──
@@ -445,7 +455,9 @@ async function loadModeration() {
   updateBulkDeleteBtn();
 
   const query = buildModQuery();
+  console.log('loadModeration query:', JSON.stringify({ ...query, limit: 50, offset: 0, sort_by: 'ai_score' }));
   const data = await api('POST', '/query', { ...query, limit: 50, offset: 0, sort_by: 'ai_score' });
+  console.log('loadModeration response:', JSON.stringify({ total: data.total, photosCount: (data.photos||[]).length, error: data.error }));
   moderationPhotos = data.photos || [];
   modTotal = data.total || 0;
   modOffset = moderationPhotos.length;
