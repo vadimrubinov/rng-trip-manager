@@ -205,6 +205,35 @@ ALTER TABLE trip_vendor_inquiries ADD COLUMN IF NOT EXISTS resend_inbound_email_
 -- Trip images (Pexels)
 ALTER TABLE trip_projects ADD COLUMN IF NOT EXISTS images JSONB DEFAULT '{}';
 
+-- v1.7.0: Photo Bank
+CREATE TABLE IF NOT EXISTS photo_bank (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    s3_key          TEXT NOT NULL UNIQUE,
+    cdn_url         TEXT NOT NULL,
+    region          VARCHAR(200),
+    country         VARCHAR(100),
+    category        VARCHAR(30) NOT NULL CHECK (category IN ('hero','band','action','scenery','fish')),
+    species         VARCHAR(100),
+    tags            TEXT[] DEFAULT '{}',
+    width           INTEGER,
+    height          INTEGER,
+    file_size       INTEGER,
+    source          VARCHAR(30) NOT NULL DEFAULT 'manual' CHECK (source IN ('md_raw','apify','og_image','manual','stock')),
+    source_url      TEXT,
+    vendor_record_id VARCHAR(50),
+    approved        BOOLEAN DEFAULT FALSE,
+    approved_by     VARCHAR(100),
+    approved_at     TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_photo_bank_region_category ON photo_bank(region, category) WHERE approved = TRUE;
+CREATE INDEX IF NOT EXISTS idx_photo_bank_country ON photo_bank(country) WHERE approved = TRUE;
+CREATE INDEX IF NOT EXISTS idx_photo_bank_species ON photo_bank(species) WHERE approved = TRUE AND species IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_photo_bank_approved ON photo_bank(approved);
+CREATE INDEX IF NOT EXISTS idx_photo_bank_source ON photo_bank(source);
+
 -- Enrichment queue for async accommodation enrichment
 CREATE TABLE IF NOT EXISTS trip_enrichment_queue (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -241,13 +270,17 @@ DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_templates_updated') THEN
     CREATE TRIGGER trg_templates_updated BEFORE UPDATE ON trip_templates FOR EACH ROW EXECUTE FUNCTION update_updated_at();
   END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_photo_bank_updated') THEN
+    CREATE TRIGGER trg_photo_bank_updated BEFORE UPDATE ON photo_bank FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+  END IF;
 END $$;
 `;
 
 const EXPECTED_TABLES = [
   "trip_templates", "trip_projects", "trip_participants",
   "trip_tasks", "trip_events", "trip_media", "trip_locations",
-  "trip_notifications", "trip_vendor_inquiries", "trip_enrichment_queue"
+  "trip_notifications", "trip_vendor_inquiries", "trip_enrichment_queue",
+  "photo_bank"
 ];
 
 export async function runMigrations(): Promise<void> {

@@ -7,6 +7,7 @@ import { publicRouter } from "./routes/public.routes";
 import { emailRouter } from "./routes/email.routes";
 import { nudgeRouter } from "./routes/nudge.routes";
 import { vendorRouter } from "./routes/vendor.routes";
+import { photoBankRouter } from "./routes/photo-bank.routes";
 import { webhookRouter } from "./routes/webhook.routes";
 import { nudgeService } from "./services/nudge/nudge.service";
 import { processEnrichmentQueue } from "./services/enrichment.service";
@@ -114,6 +115,9 @@ async function main() {
 
   // Vendor inquiry routes (protected)
   app.use("/api/trips/vendor", requireApiSecret, vendorRouter);
+
+  // Photo Bank routes (protected)
+  app.use("/api/photo-bank", requireApiSecret, photoBankRouter);
 
   // M1: Error middleware — MUST be LAST
   app.use(errorMiddleware);

@@ -22,4 +22,8 @@ export const ENV = {
   RESEND_WEBHOOK_SECRET: process.env.RESEND_WEBHOOK_SECRET || "",
   NUDGE_ENABLED: process.env.NUDGE_ENABLED || "true",
   PEXELS_API_KEY: process.env.PEXELS_API_KEY || "",
+  AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID || "",
+  AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY || "",
+  AWS_REGION: process.env.AWS_REGION || "us-east-1",
+  S3_PHOTO_BANK_BUCKET: process.env.S3_PHOTO_BANK_BUCKET || "rng-photo-bank",
 };
