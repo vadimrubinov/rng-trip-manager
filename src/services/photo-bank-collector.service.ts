@@ -82,7 +82,11 @@ function isJunkUrl(url: string): boolean {
 }
 
 function normalizeUrl(url: string): string {
-  return url.trim().replace(/["']/g, "");
+  let u = url.trim().replace(/["']/g, "");
+  // Strip alt text or title after space (markdown: ![](url "title") or ![](url alt))
+  const spaceIdx = u.indexOf(" ");
+  if (spaceIdx > 0) u = u.substring(0, spaceIdx);
+  return u;
 }
 
 // ── Image URL extraction from markdown ─────────────────
