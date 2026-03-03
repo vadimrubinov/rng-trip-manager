@@ -10,7 +10,7 @@ import {
   PhotoCategory,
   PhotoSource,
 } from "../services/photo-bank.service";
-import { collectPhotos } from "../services/photo-bank-collector.service";
+import { collectPhotosSync, startCollect, getCollectJob, getCollectJobs } from "../services/photo-bank-collector.service";
 import { log } from "../lib/pino-logger";
 
 export const photoBankRouter = Router();
@@ -171,17 +171,37 @@ photoBankRouter.post("/collect", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "source is required (md_raw|apify|og_image|all)" });
     }
 
-    const result = await collectPhotos({
+    const request = {
       source,
       limit: limit || 50,
       offset: offset || undefined,
       dryRun: dryRun ?? false,
       concurrency: concurrency || 5,
-    });
+    };
 
-    res.json(result);
+    // dryRun returns result synchronously (fast — no downloads)
+    if (request.dryRun) {
+      const result = await collectPhotosSync(request);
+      return res.json(result);
+    }
+
+    // Real run — fire and forget, return job ID
+    const jobId = startCollect(request);
+    res.json({ jobId, status: "started", message: "Use GET /api/photo-bank/collect-status/:jobId to check progress" });
   } catch (err: any) {
     log.error({ err }, "photo_bank.collect.error");
     res.status(500).json({ error: `Collect failed: ${err.message}` });
   }
+});
+
+/** GET /collect-status/:jobId — check collection job status */
+photoBankRouter.get("/collect-status/:jobId", async (req: Request, res: Response) => {
+  const job = getCollectJob(req.params.jobId);
+  if (!job) return res.status(404).json({ error: "Job not found" });
+  res.json(job);
+});
+
+/** GET /collect-jobs — list all collection jobs */
+photoBankRouter.get("/collect-jobs", async (_req: Request, res: Response) => {
+  res.json(getCollectJobs());
 });

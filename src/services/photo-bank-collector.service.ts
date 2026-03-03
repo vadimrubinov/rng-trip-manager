@@ -500,41 +500,125 @@ async function collectOgImage(limit: number, offset: string | undefined, dryRun:
 // Main collector entry point
 // ══════════════════════════════════════════════════════════
 
-export async function collectPhotos(req: CollectRequest): Promise<CollectResult | CollectResult[]> {
+// ── In-memory job state ────────────────────────────────
+
+export interface CollectJob {
+  id: string;
+  status: "running" | "done" | "error";
+  started_at: string;
+  finished_at: string | null;
+  request: CollectRequest;
+  results: CollectResult[] | null;
+  error: string | null;
+}
+
+const jobs = new Map<string, CollectJob>();
+let jobCounter = 0;
+
+export function getCollectJob(jobId: string): CollectJob | null {
+  return jobs.get(jobId) || null;
+}
+
+export function getCollectJobs(): CollectJob[] {
+  return Array.from(jobs.values()).sort((a, b) => b.id.localeCompare(a.id));
+}
+
+/** Start collection in background. Returns job ID immediately. */
+export function startCollect(req: CollectRequest): string {
+  const jobId = `collect-${++jobCounter}-${Date.now()}`;
+  const job: CollectJob = {
+    id: jobId,
+    status: "running",
+    started_at: new Date().toISOString(),
+    finished_at: null,
+    request: req,
+    results: null,
+    error: null,
+  };
+  jobs.set(jobId, job);
+
+  // Fire and forget
+  runCollect(job).catch((err) => {
+    job.status = "error";
+    job.error = err.message;
+    job.finished_at = new Date().toISOString();
+    log.error({ jobId, err }, "photo_bank.collect.job_error");
+  });
+
+  return jobId;
+}
+
+async function runCollect(job: CollectJob): Promise<void> {
+  const req = job.request;
   const limit = req.limit || 50;
   const offset = req.offset || undefined;
   const dryRun = req.dryRun ?? false;
   const concurrency = req.concurrency || 5;
 
-  log.info({ source: req.source, limit, dryRun, concurrency }, "photo_bank.collect.start");
+  log.info({ jobId: job.id, source: req.source, limit, dryRun, concurrency }, "photo_bank.collect.start");
+
+  try {
+    let results: CollectResult[];
+
+    if (req.source === "all") {
+      results = await Promise.all([
+        collectMdRaw(limit, offset, dryRun, concurrency),
+        collectApify(limit, offset, dryRun, concurrency),
+        collectOgImage(limit, offset, dryRun, concurrency),
+      ]);
+    } else {
+      let result: CollectResult;
+      switch (req.source) {
+        case "md_raw":
+          result = await collectMdRaw(limit, offset, dryRun, concurrency);
+          break;
+        case "apify":
+          result = await collectApify(limit, offset, dryRun, concurrency);
+          break;
+        case "og_image":
+          result = await collectOgImage(limit, offset, dryRun, concurrency);
+          break;
+        default:
+          throw new Error(`Unknown source: ${req.source}`);
+      }
+      results = [result];
+    }
+
+    job.results = results;
+    job.status = "done";
+    job.finished_at = new Date().toISOString();
+
+    log.info({
+      jobId: job.id,
+      sources: results.map(r => ({ source: r.source, uploaded: r.uploaded, errors: r.errors })),
+    }, "photo_bank.collect.done");
+  } catch (err: any) {
+    job.status = "error";
+    job.error = err.message;
+    job.finished_at = new Date().toISOString();
+    throw err;
+  }
+}
+
+/** Synchronous collect — for dryRun (fast, returns result directly) */
+export async function collectPhotosSync(req: CollectRequest): Promise<CollectResult | CollectResult[]> {
+  const limit = req.limit || 50;
+  const offset = req.offset || undefined;
+  const dryRun = req.dryRun ?? false;
+  const concurrency = req.concurrency || 5;
 
   if (req.source === "all") {
-    const results = await Promise.all([
+    return Promise.all([
       collectMdRaw(limit, offset, dryRun, concurrency),
       collectApify(limit, offset, dryRun, concurrency),
       collectOgImage(limit, offset, dryRun, concurrency),
     ]);
-    log.info({
-      sources: results.map(r => ({ source: r.source, uploaded: r.uploaded, errors: r.errors })),
-    }, "photo_bank.collect.all.done");
-    return results;
   }
 
-  let result: CollectResult;
   switch (req.source) {
-    case "md_raw":
-      result = await collectMdRaw(limit, offset, dryRun, concurrency);
-      break;
-    case "apify":
-      result = await collectApify(limit, offset, dryRun, concurrency);
-      break;
-    case "og_image":
-      result = await collectOgImage(limit, offset, dryRun, concurrency);
-      break;
-    default:
-      throw new Error(`Unknown source: ${req.source}`);
+    case "md_raw": return collectMdRaw(limit, offset, dryRun, concurrency);
+    case "apify": return collectApify(limit, offset, dryRun, concurrency);
+    case "og_image": return collectOgImage(limit, offset, dryRun, concurrency);
+    default: throw new Error(`Unknown source: ${req.source}`);
   }
-
-  log.info({ source: result.source, uploaded: result.uploaded, errors: result.errors }, "photo_bank.collect.done");
-  return result;
 }
