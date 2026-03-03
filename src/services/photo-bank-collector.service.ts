@@ -570,12 +570,13 @@ async function collectOgImage(region: string, limit: number, offset: string | un
 
 export interface CollectJob {
   id: string;
-  status: "running" | "done" | "error";
+  status: "running" | "done" | "error" | "stopped";
   started_at: string;
   finished_at: string | null;
   request: CollectRequest;
   results: CollectResult[] | null;
   error: string | null;
+  aborted?: boolean;
 }
 
 const jobs = new Map<string, CollectJob>();
@@ -587,6 +588,16 @@ export function getCollectJob(jobId: string): CollectJob | null {
 
 export function getCollectJobs(): CollectJob[] {
   return Array.from(jobs.values()).sort((a, b) => b.id.localeCompare(a.id));
+}
+
+export function stopCollectJob(jobId: string): boolean {
+  const job = jobs.get(jobId);
+  if (!job || job.status !== "running") return false;
+  job.aborted = true;
+  job.status = "stopped";
+  job.finished_at = new Date().toISOString();
+  log.info({ jobId }, "photo_bank.collect.stopped");
+  return true;
 }
 
 export function startCollect(req: CollectRequest): string {
