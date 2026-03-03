@@ -9,37 +9,105 @@ import { withRetry } from "../lib/retry";
 export interface CollectRequest {
   source: "md_raw" | "apify" | "og_image" | "all";
   region: string;
-  limit?: number;
-  offset?: string;
+  target?: number;
   dryRun?: boolean;
   concurrency?: number;
+}
+
+export interface CategoryProgress {
+  collected: number;
+  target: number;
+  done: boolean;
 }
 
 export interface CollectResult {
   source: string;
   region: string;
-  records_scanned: number;
+  vendors_scanned: number;
   images_found: number;
   ai_rejected: number;
   ai_passed: number;
   uploaded: number;
   duplicates_skipped: number;
   errors: number;
-  next_offset: string | null;
+  progress: Record<string, CategoryProgress>;
+  stopped_reason: "all_targets_met" | "sources_exhausted" | null;
   scores: { "1-3": number; "4-6": number; "7-10": number };
-  categories: Record<string, number>;
   error_details: { url: string; error: string }[];
+}
+
+// ── Category Tracker ──────────────────────────────────
+
+const DEFAULT_TARGETS: Record<string, number> = {
+  hero: 5,
+  action: 5,
+  scenery: 20,
+  band: 5,
+  fish: 5,
+};
+
+export class CategoryTracker {
+  private targets: Record<string, number>;
+  private collected: Record<string, number> = {};
+
+  constructor(baseTarget: number = 5) {
+    this.targets = {
+      hero: baseTarget,
+      action: baseTarget,
+      scenery: baseTarget * 4,
+      band: baseTarget,
+      fish: baseTarget,
+    };
+    for (const cat of Object.keys(this.targets)) {
+      this.collected[cat] = 0;
+    }
+  }
+
+  /** Check if a category still needs photos */
+  needsMore(category: string): boolean {
+    const target = this.targets[category];
+    if (target === undefined) return false;
+    return this.collected[category] < target;
+  }
+
+  /** Record a collected photo */
+  record(category: string): void {
+    if (this.collected[category] !== undefined) {
+      this.collected[category]++;
+    }
+  }
+
+  /** Check if all categories met their targets */
+  allDone(): boolean {
+    for (const cat of Object.keys(this.targets)) {
+      if (this.collected[cat] < this.targets[cat]) return false;
+    }
+    return true;
+  }
+
+  /** Get progress snapshot */
+  getProgress(): Record<string, CategoryProgress> {
+    const result: Record<string, CategoryProgress> = {};
+    for (const cat of Object.keys(this.targets)) {
+      result[cat] = {
+        collected: this.collected[cat],
+        target: this.targets[cat],
+        done: this.collected[cat] >= this.targets[cat],
+      };
+    }
+    return result;
+  }
 }
 
 function emptyResult(source: string, region: string): CollectResult {
   return {
     source, region,
-    records_scanned: 0, images_found: 0,
+    vendors_scanned: 0, images_found: 0,
     ai_rejected: 0, ai_passed: 0, uploaded: 0,
     duplicates_skipped: 0, errors: 0,
-    next_offset: null,
+    progress: {},
+    stopped_reason: null,
     scores: { "1-3": 0, "4-6": 0, "7-10": 0 },
-    categories: {},
     error_details: [],
   };
 }
@@ -83,7 +151,6 @@ function isJunkUrl(url: string): boolean {
 
 function normalizeUrl(url: string): string {
   let u = url.trim().replace(/["']/g, "");
-  // Strip alt text or title after space (markdown: ![](url "title") or ![](url alt))
   const spaceIdx = u.indexOf(" ");
   if (spaceIdx > 0) u = u.substring(0, spaceIdx);
   return u;
@@ -158,6 +225,7 @@ async function fetchAirtablePage(
     pageSize?: number;
     offset?: string;
     filterByFormula?: string;
+    sort?: { field: string; direction: "asc" | "desc" }[];
   },
 ): Promise<AirtablePage> {
   return withRetry(async () => {
@@ -168,12 +236,40 @@ async function fetchAirtablePage(
     if (params.fields) {
       for (const f of params.fields) qs.append("fields[]", f);
     }
+    if (params.sort) {
+      for (let i = 0; i < params.sort.length; i++) {
+        qs.append(`sort[${i}][field]`, params.sort[i].field);
+        qs.append(`sort[${i}][direction]`, params.sort[i].direction);
+      }
+    }
 
     const url = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(table)}?${qs.toString()}`;
     const res = await fetch(url, { headers, signal: AbortSignal.timeout(30_000) });
     if (!res.ok) throw new Error(`Airtable ${res.status}: ${await res.text()}`);
     return res.json() as Promise<AirtablePage>;
   }, { operationName: `airtable.page(${table})` });
+}
+
+/** Fetch ALL pages from Airtable (handles pagination) */
+async function fetchAllAirtablePages(
+  baseId: string,
+  table: string,
+  headers: Record<string, string>,
+  params: {
+    fields?: string[];
+    pageSize?: number;
+    filterByFormula?: string;
+    sort?: { field: string; direction: "asc" | "desc" }[];
+  },
+): Promise<any[]> {
+  const allRecords: any[] = [];
+  let offset: string | undefined;
+  do {
+    const page = await fetchAirtablePage(baseId, table, headers, { ...params, offset });
+    allRecords.push(...page.records);
+    offset = page.offset;
+  } while (offset);
+  return allRecords;
 }
 
 // ── Duplicate check ────────────────────────────────────
@@ -214,11 +310,11 @@ Score 1-10:
 - 7-10: Great for landing page (epic landscapes, fishing action shots, beautiful water/sunset scenes, trophy fish catches, boats on water)
 
 Category (pick one):
-- hero: Epic wide landscape suitable for fullscreen cover (sunset, panoramic water, dramatic scenery)
+- hero: Epic fishing moment — angler fighting a fish, rod bent, splash, trophy catch. Action-packed, suitable for fullscreen cover.
 - action: Fishing in progress (rod bending, fish jumping, fighting fish, casting)
 - scenery: Beautiful nature/water/coast without fishing action
 - fish: Clear photo of a fish species (caught or in water)
-- band: Good for section divider (wide scenic shot, not hero-level epic)
+- band: Good for section divider (wide scenic shot, boat, equipment, preparation)
 - reject: Not suitable for fishing trip content
 
 Description: Write a short description of the image content (10-15 words, English).
@@ -292,18 +388,17 @@ const VALID_AI_CATEGORIES: PhotoCategory[] = ["hero", "action", "scenery", "fish
 async function processCandidates(
   candidates: RawCandidate[],
   result: CollectResult,
-  maxUploads: number,
+  tracker: CategoryTracker,
   concurrency: number,
   dryRun: boolean,
+  abortCheck: () => boolean,
 ): Promise<void> {
-  result.images_found = candidates.length;
+  result.images_found += candidates.length;
 
   if (dryRun) return;
 
-  let uploadedCount = 0;
-
   await runWithConcurrency(candidates, concurrency, async (c) => {
-    if (uploadedCount >= maxUploads) return;
+    if (tracker.allDone() || abortCheck()) return;
 
     try {
       // 1. Dedup
@@ -346,26 +441,26 @@ async function processCandidates(
       else if (aiResult.score <= 6) result.scores["4-6"]++;
       else result.scores["7-10"]++;
 
-      // Track categories
-      result.categories[aiResult.category] = (result.categories[aiResult.category] || 0) + 1;
-
-      // 5. Reject
-      if (aiResult.score < 4 || aiResult.category === "reject") {
+      // 5. Reject low scores or reject category
+      if (aiResult.score < 7 || aiResult.category === "reject") {
         result.ai_rejected++;
         return;
       }
 
-      result.ai_passed++;
-
-      if (uploadedCount >= maxUploads) return;
-
-      // 6. Category
+      // 6. Determine category
       const species = detectFishSpecies(`${c.url} ${c.alt}`);
       const category: PhotoCategory = VALID_AI_CATEGORIES.includes(aiResult.category as PhotoCategory)
         ? aiResult.category as PhotoCategory
         : species ? "fish" : "scenery";
 
-      // 7. Upload
+      // 7. Smart stop — skip if category is full
+      if (!tracker.needsMore(category)) {
+        return;
+      }
+
+      result.ai_passed++;
+
+      // 8. Upload
       await addCandidateFromBuffer({
         source_url: c.url,
         region: c.region || undefined,
@@ -381,7 +476,7 @@ async function processCandidates(
         contentType,
       });
 
-      uploadedCount++;
+      tracker.record(category);
       result.uploaded++;
     } catch (err: any) {
       result.errors++;
@@ -390,92 +485,91 @@ async function processCandidates(
   });
 }
 
-// ══════════════════════════════════════════════════════════
-// SOURCE 1: md_raw from SYS_Web_Scrapes
-// ══════════════════════════════════════════════════════════
+// ── Vendor sorting by Data_Score ──────────────────────
 
-async function collectMdRaw(region: string, limit: number, offset: string | undefined, dryRun: boolean, concurrency: number): Promise<CollectResult> {
-  const result = emptyResult("md_raw", region);
+interface VendorRef {
+  recordId: string;
+  dataScore: number;
+  region: string | null;
+  country: string | null;
+  websiteUrl: string | null;
+}
 
-  const page = await fetchAirtablePage(
-    ENV.AIRTABLE_BASE_ID_SYS,
-    "SYS_Web_Scrapes",
-    sysHeaders(),
+async function fetchVendorsSortedByScore(region: string): Promise<VendorRef[]> {
+  const records = await fetchAllAirtablePages(
+    ENV.AIRTABLE_BASE_ID_OPS,
+    "Vendors",
+    opsHeaders(),
     {
-      fields: ["md_raw", "vendor_record_id", "Company", "Region"],
-      pageSize: 100,
-      offset: offset || undefined,
-      filterByFormula: `AND({md_raw}!='', FIND("${region}", {Region}))`,
+      fields: ["Name", "Data_Score", "Region", "Country", "Website_URL"],
+      filterByFormula: `FIND("${region}", {Region})`,
+      sort: [{ field: "Data_Score", direction: "desc" }],
     },
   );
 
-  result.records_scanned = page.records.length;
-  result.next_offset = page.offset || null;
-
-  const candidates: RawCandidate[] = [];
-  for (const rec of page.records) {
-    const f = rec.fields || {};
-    const images = extractImageUrls(f.md_raw || "");
-    for (const img of images) {
-      candidates.push({
-        url: img.url,
-        alt: img.alt,
-        vendor_record_id: f.vendor_record_id || null,
-        region: f.Region || region,
-        country: null,
-        source: "md_raw",
-      });
-    }
-  }
-
-  await processCandidates(candidates, result, limit, concurrency, dryRun);
-  return result;
+  return records.map((rec: any) => ({
+    recordId: rec.id,
+    dataScore: rec.fields?.Data_Score || 0,
+    region: rec.fields?.Region || region,
+    country: rec.fields?.Country || null,
+    websiteUrl: rec.fields?.Website_URL || null,
+  }));
 }
 
 // ══════════════════════════════════════════════════════════
-// SOURCE 2: imageUrl from SYS_Leads_Vendors
+// SOURCE 1: md_raw from SYS_Web_Scrapes (sorted by vendor Data_Score)
 // ══════════════════════════════════════════════════════════
 
-async function collectApify(region: string, limit: number, offset: string | undefined, dryRun: boolean, concurrency: number): Promise<CollectResult> {
-  const result = emptyResult("apify", region);
+async function collectMdRaw(
+  region: string, vendors: VendorRef[], tracker: CategoryTracker,
+  result: CollectResult, concurrency: number, dryRun: boolean, abortCheck: () => boolean,
+): Promise<void> {
+  for (const vendor of vendors) {
+    if (tracker.allDone() || abortCheck()) break;
 
-  const page = await fetchAirtablePage(
-    ENV.AIRTABLE_BASE_ID_SYS,
-    "SYS_Leads_Vendors",
-    sysHeaders(),
-    {
-      fields: ["imageUrl", "Vendor_Record_ID", "city", "state_province", "countryCode"],
-      pageSize: 100,
-      offset: offset || undefined,
-      filterByFormula: `AND({imageUrl}!='', FIND("${region}", {state_province}))`,
-    },
-  );
+    // Fetch scrapes for this vendor
+    let scrapes: any[];
+    try {
+      scrapes = await fetchAllAirtablePages(
+        ENV.AIRTABLE_BASE_ID_SYS,
+        "SYS_Web_Scrapes",
+        sysHeaders(),
+        {
+          fields: ["md_raw", "vendor_record_id", "Company", "Region"],
+          filterByFormula: `AND({md_raw}!='', {vendor_record_id}='${vendor.recordId}')`,
+        },
+      );
+    } catch {
+      continue;
+    }
 
-  result.records_scanned = page.records.length;
-  result.next_offset = page.offset || null;
+    if (scrapes.length === 0) continue;
+    result.vendors_scanned++;
 
-  const candidates: RawCandidate[] = [];
-  for (const rec of page.records) {
-    const f = rec.fields || {};
-    const imageUrl = f.imageUrl;
-    if (imageUrl && /^https?:\/\//i.test(imageUrl)) {
-      candidates.push({
-        url: imageUrl,
-        alt: "",
-        vendor_record_id: f.Vendor_Record_ID || null,
-        region: f.state_province || region,
-        country: f.countryCode || null,
-        source: "apify",
-      });
+    const candidates: RawCandidate[] = [];
+    for (const rec of scrapes) {
+      const f = rec.fields || {};
+      const images = extractImageUrls(f.md_raw || "");
+      for (const img of images) {
+        candidates.push({
+          url: img.url,
+          alt: img.alt,
+          vendor_record_id: vendor.recordId,
+          region: vendor.region,
+          country: vendor.country,
+          source: "md_raw",
+        });
+      }
+    }
+
+    if (candidates.length > 0) {
+      await processCandidates(candidates, result, tracker, concurrency, dryRun, abortCheck);
     }
   }
-
-  await processCandidates(candidates, result, limit, concurrency, dryRun);
-  return result;
 }
 
 // ══════════════════════════════════════════════════════════
-// SOURCE 3: og:image from Vendors websites
+// SOURCE 2: og:image from Vendors websites (already sorted)
 // ══════════════════════════════════════════════════════════
 
 async function fetchOgImage(websiteUrl: string): Promise<string | null> {
@@ -508,59 +602,141 @@ async function fetchOgImage(websiteUrl: string): Promise<string | null> {
   }
 }
 
-async function collectOgImage(region: string, limit: number, offset: string | undefined, dryRun: boolean, concurrency: number): Promise<CollectResult> {
-  const result = emptyResult("og_image", region);
+async function collectOgImage(
+  region: string, vendors: VendorRef[], tracker: CategoryTracker,
+  result: CollectResult, concurrency: number, dryRun: boolean, abortCheck: () => boolean,
+): Promise<void> {
+  const vendorsWithSites = vendors.filter(v => v.websiteUrl);
 
-  const page = await fetchAirtablePage(
+  // Fetch OG images in parallel batches
+  const batchSize = 10;
+  for (let i = 0; i < vendorsWithSites.length; i += batchSize) {
+    if (tracker.allDone() || abortCheck()) break;
+
+    const batch = vendorsWithSites.slice(i, i + batchSize);
+    result.vendors_scanned += batch.length;
+
+    const candidates: RawCandidate[] = [];
+    await runWithConcurrency(batch, concurrency, async (v) => {
+      const ogUrl = await fetchOgImage(v.websiteUrl!);
+      if (ogUrl) {
+        candidates.push({
+          url: ogUrl,
+          alt: "",
+          vendor_record_id: v.recordId,
+          region: v.region,
+          country: v.country,
+          source: "og_image",
+        });
+      }
+    });
+
+    if (candidates.length > 0) {
+      await processCandidates(candidates, result, tracker, concurrency, dryRun, abortCheck);
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// SOURCE 3: imageUrl from SYS_Leads_Vendors (sorted by vendor Data_Score)
+// ══════════════════════════════════════════════════════════
+
+async function collectApify(
+  region: string, vendors: VendorRef[], tracker: CategoryTracker,
+  result: CollectResult, concurrency: number, dryRun: boolean, abortCheck: () => boolean,
+): Promise<void> {
+  for (const vendor of vendors) {
+    if (tracker.allDone() || abortCheck()) break;
+
+    let leads: any[];
+    try {
+      leads = await fetchAllAirtablePages(
+        ENV.AIRTABLE_BASE_ID_SYS,
+        "SYS_Leads_Vendors",
+        sysHeaders(),
+        {
+          fields: ["imageUrl", "Vendor_Record_ID", "city", "state_province", "countryCode"],
+          filterByFormula: `AND({imageUrl}!='', {Vendor_Record_ID}='${vendor.recordId}')`,
+        },
+      );
+    } catch {
+      continue;
+    }
+
+    if (leads.length === 0) continue;
+    result.vendors_scanned++;
+
+    const candidates: RawCandidate[] = [];
+    for (const rec of leads) {
+      const f = rec.fields || {};
+      const imageUrl = f.imageUrl;
+      if (imageUrl && /^https?:\/\//i.test(imageUrl)) {
+        candidates.push({
+          url: imageUrl,
+          alt: "",
+          vendor_record_id: vendor.recordId,
+          region: vendor.region,
+          country: vendor.country,
+          source: "apify",
+        });
+      }
+    }
+
+    if (candidates.length > 0) {
+      await processCandidates(candidates, result, tracker, concurrency, dryRun, abortCheck);
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// Available regions endpoint
+// ══════════════════════════════════════════════════════════
+
+interface AvailableRegion {
+  region: string;
+  country: string;
+  vendors_count: number;
+}
+
+let cachedRegions: AvailableRegion[] | null = null;
+let regionsCacheTime = 0;
+const REGIONS_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
+export async function getAvailableRegions(): Promise<AvailableRegion[]> {
+  if (cachedRegions && Date.now() - regionsCacheTime < REGIONS_CACHE_TTL) {
+    return cachedRegions;
+  }
+
+  const records = await fetchAllAirtablePages(
     ENV.AIRTABLE_BASE_ID_OPS,
     "Vendors",
     opsHeaders(),
     {
-      fields: ["Website_URL", "Region", "Country", "Name"],
-      pageSize: 100,
-      offset: offset || undefined,
-      filterByFormula: `AND({Website_URL}!='', FIND("${region}", {Region}))`,
+      fields: ["Region", "Country"],
     },
   );
 
-  result.records_scanned = page.records.length;
-  result.next_offset = page.offset || null;
-
-  const vendorPages: {
-    recordId: string;
-    websiteUrl: string;
-    region: string | null;
-    country: string | null;
-  }[] = [];
-
-  for (const rec of page.records) {
-    const f = rec.fields || {};
-    if (f.Website_URL) {
-      vendorPages.push({
-        recordId: rec.id,
-        websiteUrl: f.Website_URL,
-        region: f.Region || region,
-        country: f.Country || null,
-      });
+  const map = new Map<string, { country: string; count: number }>();
+  for (const rec of records) {
+    const region = rec.fields?.Region;
+    const country = rec.fields?.Country;
+    if (!region) continue;
+    const existing = map.get(region);
+    if (existing) {
+      existing.count++;
+    } else {
+      map.set(region, { country: country || "", count: 1 });
     }
   }
 
-  const candidates: RawCandidate[] = [];
-  await runWithConcurrency(vendorPages, concurrency, async (v) => {
-    const ogUrl = await fetchOgImage(v.websiteUrl);
-    if (ogUrl) {
-      candidates.push({
-        url: ogUrl,
-        alt: "",
-        vendor_record_id: v.recordId,
-        region: v.region,
-        country: v.country,
-        source: "og_image",
-      });
-    }
-  });
+  const result: AvailableRegion[] = [];
+  for (const [region, { country, count }] of map) {
+    result.push({ region, country, vendors_count: count });
+  }
+  result.sort((a, b) => b.vendors_count - a.vendors_count);
 
-  await processCandidates(candidates, result, limit, concurrency, dryRun);
+  cachedRegions = result;
+  regionsCacheTime = Date.now();
   return result;
 }
 
@@ -574,7 +750,7 @@ export interface CollectJob {
   started_at: string;
   finished_at: string | null;
   request: CollectRequest;
-  results: CollectResult[] | null;
+  result: CollectResult | null;
   error: string | null;
   aborted?: boolean;
 }
@@ -608,7 +784,7 @@ export function startCollect(req: CollectRequest): string {
     started_at: new Date().toISOString(),
     finished_at: null,
     request: req,
-    results: null,
+    result: null,
     error: null,
   };
   jobs.set(jobId, job);
@@ -625,76 +801,62 @@ export function startCollect(req: CollectRequest): string {
 
 async function runCollect(job: CollectJob): Promise<void> {
   const req = job.request;
-  const limit = req.limit || 200;
-  const offset = req.offset || undefined;
+  const target = req.target || 5;
   const dryRun = req.dryRun ?? false;
   const concurrency = req.concurrency || 5;
+  const tracker = new CategoryTracker(target);
+  const abortCheck = () => !!job.aborted;
 
-  log.info({ jobId: job.id, source: req.source, region: req.region, limit, dryRun, concurrency }, "photo_bank.collect.start");
+  log.info({ jobId: job.id, source: req.source, region: req.region, target, dryRun, concurrency }, "photo_bank.collect.start");
+
+  const result = emptyResult(req.source, req.region);
+  job.result = result;
 
   try {
-    let results: CollectResult[];
+    // Fetch vendors sorted by Data_Score DESC
+    const vendors = await fetchVendorsSortedByScore(req.region);
+    log.info({ jobId: job.id, vendorsFound: vendors.length }, "photo_bank.collect.vendors_loaded");
 
-    if (req.source === "all") {
-      results = await Promise.all([
-        collectMdRaw(req.region, limit, offset, dryRun, concurrency),
-        collectApify(req.region, limit, offset, dryRun, concurrency),
-        collectOgImage(req.region, limit, offset, dryRun, concurrency),
-      ]);
-    } else {
-      let result: CollectResult;
-      switch (req.source) {
+    // Sources run sequentially, sharing one tracker
+    const sources: ("md_raw" | "og_image" | "apify")[] =
+      req.source === "all" ? ["md_raw", "og_image", "apify"] : [req.source];
+
+    for (const source of sources) {
+      if (tracker.allDone() || abortCheck()) break;
+
+      result.source = req.source === "all" ? "all" : source;
+
+      switch (source) {
         case "md_raw":
-          result = await collectMdRaw(req.region, limit, offset, dryRun, concurrency);
-          break;
-        case "apify":
-          result = await collectApify(req.region, limit, offset, dryRun, concurrency);
+          await collectMdRaw(req.region, vendors, tracker, result, concurrency, dryRun, abortCheck);
           break;
         case "og_image":
-          result = await collectOgImage(req.region, limit, offset, dryRun, concurrency);
+          await collectOgImage(req.region, vendors, tracker, result, concurrency, dryRun, abortCheck);
           break;
-        default:
-          throw new Error(`Unknown source: ${req.source}`);
+        case "apify":
+          await collectApify(req.region, vendors, tracker, result, concurrency, dryRun, abortCheck);
+          break;
       }
-      results = [result];
+
+      // Update progress after each source
+      result.progress = tracker.getProgress();
     }
 
-    job.results = results;
-    job.status = "done";
+    result.progress = tracker.getProgress();
+    result.stopped_reason = tracker.allDone() ? "all_targets_met" : "sources_exhausted";
+    job.status = job.aborted ? "stopped" : "done";
     job.finished_at = new Date().toISOString();
 
     log.info({
       jobId: job.id,
-      sources: results.map(r => ({
-        source: r.source, uploaded: r.uploaded, ai_rejected: r.ai_rejected, errors: r.errors,
-      })),
+      uploaded: result.uploaded,
+      progress: result.progress,
+      stopped_reason: result.stopped_reason,
     }, "photo_bank.collect.done");
   } catch (err: any) {
     job.status = "error";
     job.error = err.message;
     job.finished_at = new Date().toISOString();
     throw err;
-  }
-}
-
-/** Synchronous collect — for dryRun (fast, returns result directly) */
-export async function collectPhotosSync(req: CollectRequest): Promise<CollectResult | CollectResult[]> {
-  const limit = req.limit || 200;
-  const offset = req.offset || undefined;
-  const concurrency = req.concurrency || 5;
-
-  if (req.source === "all") {
-    return Promise.all([
-      collectMdRaw(req.region, limit, offset, true, concurrency),
-      collectApify(req.region, limit, offset, true, concurrency),
-      collectOgImage(req.region, limit, offset, true, concurrency),
-    ]);
-  }
-
-  switch (req.source) {
-    case "md_raw": return collectMdRaw(req.region, limit, offset, true, concurrency);
-    case "apify": return collectApify(req.region, limit, offset, true, concurrency);
-    case "og_image": return collectOgImage(req.region, limit, offset, true, concurrency);
-    default: throw new Error(`Unknown source: ${req.source}`);
   }
 }

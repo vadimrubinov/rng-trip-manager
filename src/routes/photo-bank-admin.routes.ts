@@ -170,8 +170,8 @@ function getAdminHtml(apiKey: string): string {
         </select>
       </div>
       <div class="field">
-        <label>Limit</label>
-        <input type="number" id="collect-limit" value="200" min="1" max="1000" style="width:100px;">
+        <label>Target per category (scenery = target x4)</label>
+        <input type="number" id="collect-target" value="5" min="1" max="50" style="width:100px;">
       </div>
       <div style="display:flex;gap:8px;margin-top:8px;">
         <button class="btn btn-primary" id="collect-start-btn" onclick="startCollect()">Start Collect</button>
@@ -244,6 +244,7 @@ const CATEGORIES = ['hero','band','action','scenery','fish'];
 
 let currentScreen = 'dashboard';
 let regions = [];
+  let allRegions = [];
 let selectedPhotos = new Set();
 let moderationPhotos = [];
 let modOffset = 0;
@@ -330,11 +331,14 @@ function stat(label, value, color) {
 }
 
 function populateRegionSelects() {
+  const regionList = allRegions.length > 0
+    ? allRegions.map(r => ({ name: r.region, label: r.region + ' (' + r.vendors_count + ' vendors)' }))
+    : regions.map(r => ({ name: r, label: r }));
   ['collect-region','mod-region'].forEach(id => {
     const sel = document.getElementById(id);
     const cur = sel.value;
     sel.innerHTML = '<option value="">Select region...</option>' +
-      regions.map(r => '<option value="' + esc(r) + '"' + (r === cur ? ' selected' : '') + '>' + esc(r) + '</option>').join('');
+      regionList.map(r => '<option value="' + esc(r.name) + '"' + (r.name === cur ? ' selected' : '') + '>' + esc(r.label) + '</option>').join('');
   });
 }
 
@@ -351,22 +355,26 @@ function moderateRegion(region) {
 
 // ── Collect ──
 async function loadCollectScreen() {
-  if (!regions.length) {
-    const data = await api('GET', '/region-stats');
-    regions = data.regions.map(r => r.region);
+  await loadAvailableRegions();
+  loadCollectJobs();
+}
+
+async function loadAvailableRegions() {
+  const data = await api('GET', '/available-regions');
+  if (data.regions) {
+    allRegions = data.regions;
     populateRegionSelects();
   }
-  loadCollectJobs();
 }
 
 async function startCollect() {
   const region = document.getElementById('collect-region').value;
   if (!region) return alert('Select a region');
   const source = document.getElementById('collect-source').value;
-  const limit = parseInt(document.getElementById('collect-limit').value) || 200;
+  const target = parseInt(document.getElementById('collect-target').value) || 5;
 
   currentCollectRegion = region;
-  const data = await api('POST', '/collect', { source, region, limit });
+  const data = await api('POST', '/collect', { source, region, target });
   if (data.error) return alert(data.error);
 
   currentCollectJobId = data.jobId;
@@ -399,27 +407,39 @@ function pollCollectStatus() {
       loadCollectJobs();
     }
 
-    if (job.results) {
-      renderCollectProgress(job.results);
+    if (job.result) {
+      renderCollectProgress(job.result);
     }
   }, 2000);
 }
 
-function renderCollectProgress(results) {
-  const agg = { records_scanned: 0, images_found: 0, ai_rejected: 0, ai_passed: 0, uploaded: 0, errors: 0 };
-  const cats = {};
-  for (const r of results) {
-    for (const k of Object.keys(agg)) agg[k] += r[k] || 0;
-    for (const [c, n] of Object.entries(r.categories || {})) cats[c] = (cats[c] || 0) + n;
+function renderCollectProgress(result) {
+    var agg = {
+      vendors_scanned: result.vendors_scanned || 0,
+      images_found: result.images_found || 0,
+      ai_rejected: result.ai_rejected || 0,
+      ai_passed: result.ai_passed || 0,
+      uploaded: result.uploaded || 0,
+      errors: result.errors || 0,
+    };
+    document.getElementById('collect-progress-data').innerHTML =
+      Object.entries(agg).map(function(e) {
+        return '<div class="progress-item"><div class="p-label">' + e[0].replace(/_/g, ' ') + '</div><div class="p-value">' + e[1] + '</div></div>';
+      }).join('');
+    var progress = result.progress || {};
+    var catHtml = Object.keys(progress).length ?
+      '<div style="font-size:12px;margin-top:8px;">' +
+      Object.entries(progress).map(function(e) {
+        var cat = e[0], p = e[1];
+        var color = p.done ? 'var(--green)' : p.collected > 0 ? 'var(--orange)' : 'var(--dim)';
+        return '<span class="cat-badge cat-' + cat + '" style="margin-right:8px;">' + cat + ': <strong style="color:' + color + ';">' + p.collected + '/' + p.target + (p.done ? ' \u2713' : '') + '</strong></span>';
+      }).join('') + '</div>' : '';
+    document.getElementById('collect-categories').innerHTML = catHtml;
+    if (result.stopped_reason) {
+      document.getElementById('collect-status-text').textContent =
+        result.stopped_reason === 'all_targets_met' ? 'Done - All targets met \u2713' : 'Done - Sources exhausted';
+    }
   }
-  document.getElementById('collect-progress-data').innerHTML =
-    Object.entries(agg).map(([k, v]) =>
-      '<div class="progress-item"><div class="p-label">' + k.replace(/_/g, ' ') + '</div><div class="p-value">' + v + '</div></div>'
-    ).join('');
-  document.getElementById('collect-categories').innerHTML = Object.keys(cats).length ?
-    '<div style="font-size:12px;color:var(--dim);">Categories: ' +
-    Object.entries(cats).map(([c, n]) => '<span class="cat-badge cat-' + c + '">' + c + ': ' + n + '</span>').join(' ') + '</div>' : '';
-}
 
 async function stopCollect() {
   if (!currentCollectJobId) return;
@@ -438,7 +458,7 @@ async function loadCollectJobs() {
   const jobs = await api('GET', '/collect-jobs');
   const tbody = document.getElementById('collect-jobs-table');
   tbody.innerHTML = (jobs || []).slice(0, 10).map(j => {
-    const uploaded = j.results ? j.results.reduce((s, r) => s + (r.uploaded || 0), 0) : '-';
+    const uploaded = j.result ? j.result.uploaded || 0 : '-';
     return '<tr><td style="font-size:11px;">' + esc(j.id) + '</td><td>' + esc(j.request?.region || '') +
       '</td><td>' + esc(j.request?.source || '') + '</td><td>' + j.status +
       '</td><td>' + uploaded + '</td><td style="font-size:11px;">' + fmtTime(j.started_at) + '</td></tr>';

@@ -13,7 +13,7 @@ import {
   PhotoCategory,
   PhotoSource,
 } from "../services/photo-bank.service";
-import { collectPhotosSync, startCollect, getCollectJob, getCollectJobs, stopCollectJob } from "../services/photo-bank-collector.service";
+import { startCollect, getCollectJob, getCollectJobs, stopCollectJob, getAvailableRegions } from "../services/photo-bank-collector.service";
 import { log } from "../lib/pino-logger";
 
 export const photoBankRouter = Router();
@@ -206,6 +206,17 @@ photoBankRouter.get("/region-stats", async (_req: Request, res: Response) => {
   }
 });
 
+/** GET /available-regions — all regions from Vendors (cached 1hr) */
+photoBankRouter.get("/available-regions", async (_req: Request, res: Response) => {
+  try {
+    const regions = await getAvailableRegions();
+    res.json({ regions });
+  } catch (err: any) {
+    log.error({ err }, "photo_bank.available_regions.error");
+    res.status(500).json({ error: "Failed to get available regions" });
+  }
+});
+
 /** POST /collect-stop/:jobId — stop a running collect job */
 photoBankRouter.post("/collect-stop/:jobId", async (req: Request, res: Response) => {
   const stopped = stopCollectJob(req.params.jobId);
@@ -216,7 +227,7 @@ photoBankRouter.post("/collect-stop/:jobId", async (req: Request, res: Response)
 /** POST /collect — collect photo candidates from sources */
 photoBankRouter.post("/collect", async (req: Request, res: Response) => {
   try {
-    const { source, region, limit, offset, dryRun, concurrency } = req.body;
+    const { source, region, target, dryRun, concurrency } = req.body;
 
     if (!source || !["md_raw", "apify", "og_image", "all"].includes(source)) {
       return res.status(400).json({ error: "source is required (md_raw|apify|og_image|all)" });
@@ -228,24 +239,17 @@ photoBankRouter.post("/collect", async (req: Request, res: Response) => {
     const request = {
       source,
       region,
-      limit: limit || 200,
-      offset: offset || undefined,
+      target: target || 5,
       dryRun: dryRun ?? false,
       concurrency: concurrency || 5,
     };
-
-    // dryRun returns result synchronously (fast — no downloads)
-    if (request.dryRun) {
-      const result = await collectPhotosSync(request);
-      return res.json(result);
-    }
 
     // Real run — fire and forget, return job ID
     const jobId = startCollect(request);
     res.json({ jobId, status: "started", message: "Use GET /api/photo-bank/collect-status/:jobId to check progress" });
   } catch (err: any) {
     log.error({ err }, "photo_bank.collect.error");
-    res.status(500).json({ error: `Collect failed: ${err.message}` });
+    res.status(500).json({ error: 'Collect failed: ' + err.message });
   }
 });
 
