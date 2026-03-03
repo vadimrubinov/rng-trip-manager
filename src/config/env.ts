@@ -26,4 +26,6 @@ export const ENV = {
   AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY || "",
   AWS_REGION: process.env.AWS_REGION || "us-east-1",
   S3_PHOTO_BANK_BUCKET: process.env.S3_PHOTO_BANK_BUCKET || "rng-photo-bank",
+  AIRTABLE_API_KEY_SYS: process.env.AIRTABLE_API_KEY_SYS || "",
+  AIRTABLE_BASE_ID_SYS: process.env.AIRTABLE_BASE_ID_SYS || "",
 };

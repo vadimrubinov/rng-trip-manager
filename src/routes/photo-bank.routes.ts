@@ -10,6 +10,7 @@ import {
   PhotoCategory,
   PhotoSource,
 } from "../services/photo-bank.service";
+import { collectPhotos } from "../services/photo-bank-collector.service";
 import { log } from "../lib/pino-logger";
 
 export const photoBankRouter = Router();
@@ -158,5 +159,29 @@ photoBankRouter.post("/update", async (req: Request, res: Response) => {
   } catch (err: any) {
     log.error({ err }, "photo_bank.update.error");
     res.status(500).json({ error: "Failed to update" });
+  }
+});
+
+/** POST /collect — collect photo candidates from sources */
+photoBankRouter.post("/collect", async (req: Request, res: Response) => {
+  try {
+    const { source, limit, offset, dryRun, concurrency } = req.body;
+
+    if (!source || !["md_raw", "apify", "og_image", "all"].includes(source)) {
+      return res.status(400).json({ error: "source is required (md_raw|apify|og_image|all)" });
+    }
+
+    const result = await collectPhotos({
+      source,
+      limit: limit || 50,
+      offset: offset || undefined,
+      dryRun: dryRun ?? false,
+      concurrency: concurrency || 5,
+    });
+
+    res.json(result);
+  } catch (err: any) {
+    log.error({ err }, "photo_bank.collect.error");
+    res.status(500).json({ error: `Collect failed: ${err.message}` });
   }
 });
