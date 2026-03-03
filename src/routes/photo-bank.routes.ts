@@ -165,15 +165,19 @@ photoBankRouter.post("/update", async (req: Request, res: Response) => {
 /** POST /collect — collect photo candidates from sources */
 photoBankRouter.post("/collect", async (req: Request, res: Response) => {
   try {
-    const { source, limit, offset, dryRun, concurrency } = req.body;
+    const { source, region, limit, offset, dryRun, concurrency } = req.body;
 
     if (!source || !["md_raw", "apify", "og_image", "all"].includes(source)) {
       return res.status(400).json({ error: "source is required (md_raw|apify|og_image|all)" });
     }
+    if (!region || typeof region !== "string") {
+      return res.status(400).json({ error: "region is required" });
+    }
 
     const request = {
       source,
-      limit: limit || 50,
+      region,
+      limit: limit || 200,
       offset: offset || undefined,
       dryRun: dryRun ?? false,
       concurrency: concurrency || 5,

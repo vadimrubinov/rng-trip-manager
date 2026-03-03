@@ -25,6 +25,10 @@ export interface PhotoBankRow {
   approved: boolean;
   approved_by: string | null;
   approved_at: string | null;
+  ai_score: number | null;
+  ai_category: string | null;
+  ai_description: string | null;
+  ai_filtered_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -43,6 +47,9 @@ export interface AddPhotoRequest {
   source: PhotoSource;
   source_url?: string;
   vendor_record_id?: string;
+  ai_score?: number;
+  ai_category?: string;
+  ai_description?: string;
 }
 
 export interface AddCandidateRequest {
@@ -54,6 +61,9 @@ export interface AddCandidateRequest {
   tags?: string[];
   source: PhotoSource;
   vendor_record_id?: string;
+  ai_score?: number;
+  ai_category?: string;
+  ai_description?: string;
 }
 
 export interface PhotoQuery {
@@ -131,7 +141,7 @@ async function deleteFromS3(s3Key: string): Promise<void> {
 
 // ── Download external image ──
 
-async function downloadImage(url: string): Promise<{ buffer: Buffer; contentType: string }> {
+export async function downloadImage(url: string): Promise<{ buffer: Buffer; contentType: string }> {
   const resp = await fetch(url, {
     headers: { "User-Agent": "BiteScout-PhotoBank/1.0" },
     redirect: "follow",
@@ -151,8 +161,8 @@ async function downloadImage(url: string): Promise<{ buffer: Buffer; contentType
 export async function addPhoto(req: AddPhotoRequest): Promise<PhotoBankRow> {
   const { rows } = await pool.query(
     `INSERT INTO photo_bank
-       (s3_key, cdn_url, region, country, category, species, tags, width, height, file_size, source, source_url, vendor_record_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       (s3_key, cdn_url, region, country, category, species, tags, width, height, file_size, source, source_url, vendor_record_id, ai_score, ai_category, ai_description, ai_filtered_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
      RETURNING *`,
     [
       req.s3_key, req.cdn_url,
@@ -161,6 +171,8 @@ export async function addPhoto(req: AddPhotoRequest): Promise<PhotoBankRow> {
       req.tags || [], req.width || null, req.height || null,
       req.file_size || null, req.source,
       req.source_url || null, req.vendor_record_id || null,
+      req.ai_score ?? null, req.ai_category || null, req.ai_description || null,
+      req.ai_score != null ? new Date().toISOString() : null,
     ],
   );
   return rows[0];
@@ -170,6 +182,13 @@ export async function addPhoto(req: AddPhotoRequest): Promise<PhotoBankRow> {
 export async function addCandidate(req: AddCandidateRequest): Promise<PhotoBankRow> {
   // Download
   const { buffer, contentType } = await downloadImage(req.source_url);
+
+  return addCandidateFromBuffer({ ...req, buffer, contentType });
+}
+
+/** Add a candidate from already-downloaded buffer — uploads to S3, creates DB record */
+export async function addCandidateFromBuffer(req: AddCandidateRequest & { buffer: Buffer; contentType: string }): Promise<PhotoBankRow> {
+  const { buffer, contentType } = req;
 
   // Determine extension
   const ext = contentType.includes("png") ? "png"
@@ -200,6 +219,9 @@ export async function addCandidate(req: AddCandidateRequest): Promise<PhotoBankR
     source: req.source,
     source_url: req.source_url,
     vendor_record_id: req.vendor_record_id,
+    ai_score: req.ai_score,
+    ai_category: req.ai_category,
+    ai_description: req.ai_description,
   });
 }
 

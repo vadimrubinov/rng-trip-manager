@@ -274,6 +274,12 @@ DO $$ BEGIN
     CREATE TRIGGER trg_photo_bank_updated BEFORE UPDATE ON photo_bank FOR EACH ROW EXECUTE FUNCTION update_updated_at();
   END IF;
 END $$;
+
+-- Photo bank AI fields (added in collector v2)
+ALTER TABLE photo_bank ADD COLUMN IF NOT EXISTS ai_score INTEGER;
+ALTER TABLE photo_bank ADD COLUMN IF NOT EXISTS ai_category VARCHAR(30);
+ALTER TABLE photo_bank ADD COLUMN IF NOT EXISTS ai_description TEXT;
+ALTER TABLE photo_bank ADD COLUMN IF NOT EXISTS ai_filtered_at TIMESTAMPTZ;
 `;
 
 const EXPECTED_TABLES = [
