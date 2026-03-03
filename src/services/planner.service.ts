@@ -137,7 +137,8 @@ export const plannerService = {
 
     // Load model config (same for all passes)
     const modelConfig = await getModel("trip_planner");
-    const { model, temperature } = modelConfig;
+    const { model, temperature: temp } = modelConfig;
+    const temperature = temp ?? 0.3;
 
     const startTime = Date.now();
     log.info({ model, hasScout: !!request.scoutId, hasRaw: !!request.rawItinerary }, "[Planner] Starting multi-pass generation");
