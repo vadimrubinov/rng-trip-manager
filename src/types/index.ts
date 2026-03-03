@@ -40,7 +40,13 @@ export interface ItineraryDay {
   dayNumber: number;
   title: string;
   description: string;
-  highlights: string[];
+  type?: "offshore" | "rest" | "travel";
+  highlights?: string[];
+  activities?: string[];
+  accommodation?: {
+    name: string;
+    photos?: string[];
+  } | null;
 }
 
 export interface TripTaskRow {
