@@ -91,7 +91,12 @@ async function main() {
   const allowedOrigins = ENV.CORS_ORIGINS.split(",").map(s => s.trim());
   app.use(cors({
     origin: (origin, cb) => {
-      if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+      // No origin (same-origin, server-to-server, curl) — always allow
+      if (!origin) return cb(null, true);
+      // Explicit whitelist
+      if (allowedOrigins.includes(origin)) return cb(null, true);
+      // Allow self-origin (admin UI served from same host)
+      if (origin.includes("rng-trip-manager")) return cb(null, true);
       cb(new Error("Not allowed by CORS"));
     },
   }));

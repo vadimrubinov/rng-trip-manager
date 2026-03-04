@@ -18,7 +18,7 @@ export function errorMiddleware(err: any, req: Request, res: Response, _next: Ne
   );
 
   if (!res.headersSent) {
-    res.status(status).json({ error: true, message, correlationId, debug_stack: err.stack, debug_msg: err.message });
+    res.status(status).json({ error: true, message, correlationId });
   }
 }
 
