@@ -511,7 +511,7 @@ async function loadModeration() {
 
   renderModGrid();
   loadCoverage(region);
-  document.getElementById('mod-count').textContent = modTotal + ' photos found';
+  updateModCount();
   document.getElementById('mod-load-more').classList.toggle('hidden', modOffset >= modTotal);
 }
 
@@ -521,6 +521,7 @@ async function loadMorePhotos() {
   moderationPhotos.push(...(data.photos || []));
   modOffset = moderationPhotos.length;
   renderModGrid();
+  updateModCount();
   document.getElementById('mod-load-more').classList.toggle('hidden', modOffset >= modTotal);
 }
 
@@ -537,6 +538,12 @@ function buildModQuery() {
   return q;
 }
 
+function updateModCount() {
+  const showing = moderationPhotos.length;
+  const total = modTotal;
+  document.getElementById('mod-count').textContent = showing + ' из ' + total;
+}
+
 function renderModGrid() {
   const grid = document.getElementById('mod-grid');
   grid.innerHTML = moderationPhotos.map((p, i) => {
@@ -548,6 +555,7 @@ function renderModGrid() {
       '<img src="' + esc(p.cdn_url) + '" onclick="openLightbox(' + i + ')" loading="lazy" onerror="this.src=\\'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22280%22 height=%22200%22><rect fill=%22%231a1d27%22 width=%22280%22 height=%22200%22/><text fill=%22%238b8fa3%22 x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22>Image Error</text></svg>\\'">' +
       '<div class="info">' +
       '<div class="desc">' + esc(p.ai_description || '—') + '</div>' +
+      '<div style="font-size:11px;color:var(--dim);margin-bottom:5px;">' + ((p.width && p.height) ? p.width + ' × ' + p.height + ' px' : '') + '</div>' +
       '<div class="meta">' +
       '<span class="score-badge ' + scoreClass + '">' + (p.ai_score || '?') + '</span>' +
       '<select class="cat-select" onchange="changeCategory(\\'' + p.id + '\\', this.value)">' +
@@ -603,7 +611,7 @@ async function deleteOne(id, idx) {
   renderModGrid();
   updateBulkDeleteBtn();
   loadCoverage(document.getElementById('mod-region').value);
-  document.getElementById('mod-count').textContent = modTotal + ' photos found';
+  updateModCount();
 }
 
 async function bulkApprove() {
@@ -632,7 +640,7 @@ async function bulkDeleteSelected() {
   renderModGrid();
   updateBulkDeleteBtn();
   loadCoverage(document.getElementById('mod-region').value);
-  document.getElementById('mod-count').textContent = modTotal + ' photos found';
+  updateModCount();
 }
 
 async function changeCategory(id, newCat) {

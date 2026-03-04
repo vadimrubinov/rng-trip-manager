@@ -653,6 +653,8 @@ async function processCandidates(
         ai_description: aiResult.description,
         buffer: finalBuffer,
         contentType: finalContentType,
+        width: finalWidth,
+        height: finalHeight,
       });
 
       tracker.record(finalCategory);

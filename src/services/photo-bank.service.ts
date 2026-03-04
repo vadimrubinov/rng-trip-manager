@@ -64,6 +64,8 @@ export interface AddCandidateRequest {
   ai_score?: number;
   ai_category?: string;
   ai_description?: string;
+  width?: number;
+  height?: number;
 }
 
 export interface PhotoQuery {
