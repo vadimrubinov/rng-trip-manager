@@ -1,6 +1,7 @@
 import { log } from "../lib/pino-logger";
 import { ENV } from "../config/env";
 import { TripImage, TripImages } from "../types";
+import { getPhotosForTrip, PhotoBankRow } from "./photo-bank.service";
 
 const PEXELS_BASE = "https://api.pexels.com/v1";
 
@@ -36,7 +37,7 @@ const SPECIES_MAP: Record<string, string> = {
 };
 
 function isLatin(text: string): boolean {
-  return /^[\x00-\x7F\s.,\-()]+$/.test(text);
+  return /^[\x00-\x7F\s.,\-()+]+$/.test(text);
 }
 
 function translateSpecies(species: string): string {
@@ -68,29 +69,20 @@ function buildSearchQueries(
     ? tripType
     : "";
 
-  // Query 1: species + fishing + location (most specific)
   if (englishSpecies.length && (cleanRegion || cleanCountry)) {
     queries.push(`${englishSpecies[0]} fishing ${cleanRegion || cleanCountry}`);
   }
-
-  // Query 2: type + fishing + location
   if (usefulType && (cleanRegion || cleanCountry)) {
     queries.push(`${usefulType} fishing ${cleanRegion || cleanCountry}`);
   }
-
-  // Query 3: fishing + location
   if (cleanRegion) {
     queries.push(`fishing ${cleanRegion} ${cleanCountry}`.trim());
   } else if (cleanCountry) {
     queries.push(`fishing ${cleanCountry}`);
   }
-
-  // Query 4: species fishing (no location)
   if (englishSpecies.length) {
     queries.push(`${englishSpecies[0]} fishing`);
   }
-
-  // Ultimate fallback
   if (queries.length === 0) {
     queries.push("sport fishing ocean");
   }
@@ -98,11 +90,23 @@ function buildSearchQueries(
   return queries;
 }
 
-function mapPhoto(photo: PexelsPhoto, size: "large2x" | "large"): TripImage {
+function mapPexelsPhoto(photo: PexelsPhoto, size: "large2x" | "large"): TripImage {
   return {
     url: photo.src[size],
     photographer: photo.photographer,
     photographerUrl: photo.photographer_url,
+    source: "pexels",
+  };
+}
+
+function mapPhotoBankRow(row: PhotoBankRow, size: "large2x" | "large"): TripImage {
+  return {
+    url: row.cdn_url,
+    photographer: "",
+    photographerUrl: "",
+    photoId: row.id,
+    source: "photo_bank",
+    description: row.ai_description || undefined,
   };
 }
 
@@ -127,6 +131,41 @@ async function searchPexels(query: string, perPage: number = 5): Promise<PexelsP
   return data.photos || [];
 }
 
+async function getPexelsFallback(
+  region?: string,
+  targetSpecies?: string[],
+  tripType?: string,
+  country?: string,
+  needed: number = 4,
+): Promise<PexelsPhoto[]> {
+  const queries = buildSearchQueries(region, country, targetSpecies, tripType);
+  const allPhotos: PexelsPhoto[] = [];
+  const seenIds = new Set<number>();
+
+  for (const query of queries) {
+    if (allPhotos.length >= needed) break;
+    const photos = await searchPexels(query, 5);
+    for (const p of photos) {
+      if (!seenIds.has(p.id)) {
+        seenIds.add(p.id);
+        allPhotos.push(p);
+      }
+    }
+  }
+
+  if (allPhotos.length < needed) {
+    const fallback = await searchPexels("sport fishing boat ocean", 5);
+    for (const p of fallback) {
+      if (!seenIds.has(p.id)) {
+        seenIds.add(p.id);
+        allPhotos.push(p);
+      }
+    }
+  }
+
+  return allPhotos;
+}
+
 export async function getTripImages(
   region?: string,
   targetSpecies?: string[],
@@ -136,45 +175,90 @@ export async function getTripImages(
   const emptyResult: TripImages = { cover: null, bands: [null, null, null] };
 
   try {
-    const queries = buildSearchQueries(region, country, targetSpecies, tripType);
-    log.info({ queries, region, country, tripType }, "[ImageService] Searching Pexels");
+    // ── 1. Try Photo Bank first ──────────────────────────
+    if (region || country) {
+      try {
+        const bankPhotos = await getPhotosForTrip(
+          region || country || "",
+          country,
+          targetSpecies,
+          tripType,
+        );
 
-    const allPhotos: PexelsPhoto[] = [];
-    const seenIds = new Set<number>();
+        const cover = bankPhotos.cover;
+        // Use bands from bank, fall back to action/scenery to fill slots
+        const bandCandidates = [
+          ...bankPhotos.bands,
+          ...bankPhotos.action,
+          ...bankPhotos.scenery,
+        ].filter(Boolean) as PhotoBankRow[];
 
-    for (const query of queries) {
-      if (allPhotos.length >= 5) break;
+        const hasCover = !!cover;
+        const hasBands = bandCandidates.length >= 3;
 
-      const photos = await searchPexels(query, 5);
-      for (const p of photos) {
-        if (!seenIds.has(p.id)) {
-          seenIds.add(p.id);
-          allPhotos.push(p);
+        if (hasCover && hasBands) {
+          log.info(
+            { region, country, tripType, source: "photo_bank" },
+            "[ImageService] Serving from Photo Bank",
+          );
+          return {
+            cover: mapPhotoBankRow(cover, "large2x"),
+            bands: [
+              mapPhotoBankRow(bandCandidates[0], "large"),
+              mapPhotoBankRow(bandCandidates[1], "large"),
+              mapPhotoBankRow(bandCandidates[2], "large"),
+            ],
+          };
         }
+
+        // Partial bank result — use what we have, fill rest from Pexels
+        if (hasCover || bandCandidates.length > 0) {
+          log.info(
+            { region, country, tripType, bankCover: hasCover, bankBands: bandCandidates.length, source: "photo_bank+pexels_fallback" },
+            "[ImageService] Partial Photo Bank — filling with Pexels",
+          );
+
+          const needed = 4 - (hasCover ? 1 : 0) - Math.min(bandCandidates.length, 3);
+          const pexelsPhotos = needed > 0
+            ? await getPexelsFallback(region, targetSpecies, tripType, country, needed + 2)
+            : [];
+
+          const coverImage = hasCover
+            ? mapPhotoBankRow(cover, "large2x")
+            : (pexelsPhotos[0] ? mapPexelsPhoto(pexelsPhotos.shift()!, "large2x") : null);
+
+          const bands: (TripImage | null)[] = [null, null, null];
+          for (let i = 0; i < 3; i++) {
+            if (bandCandidates[i]) {
+              bands[i] = mapPhotoBankRow(bandCandidates[i], "large");
+            } else if (pexelsPhotos.length > 0) {
+              bands[i] = mapPexelsPhoto(pexelsPhotos.shift()!, "large");
+            }
+          }
+
+          return { cover: coverImage, bands };
+        }
+      } catch (bankErr) {
+        log.warn({ bankErr }, "[ImageService] Photo Bank query failed, falling back to Pexels");
       }
     }
 
-    if (allPhotos.length < 4) {
-      const fallback = await searchPexels("sport fishing boat ocean", 5);
-      for (const p of fallback) {
-        if (!seenIds.has(p.id)) {
-          seenIds.add(p.id);
-          allPhotos.push(p);
-        }
-      }
-    }
+    // ── 2. Pexels fallback ───────────────────────────────
+    log.info({ region, country, tripType, source: "pexels_fallback" }, "[ImageService] Photo Bank empty — using Pexels");
 
-    if (allPhotos.length === 0) {
-      log.warn("[ImageService] No photos found");
+    const pexelsPhotos = await getPexelsFallback(region, targetSpecies, tripType, country, 4);
+
+    if (pexelsPhotos.length === 0) {
+      log.warn("[ImageService] No photos found from any source");
       return emptyResult;
     }
 
     return {
-      cover: allPhotos[0] ? mapPhoto(allPhotos[0], "large2x") : null,
+      cover: pexelsPhotos[0] ? mapPexelsPhoto(pexelsPhotos[0], "large2x") : null,
       bands: [
-        allPhotos[1] ? mapPhoto(allPhotos[1], "large") : null,
-        allPhotos[2] ? mapPhoto(allPhotos[2], "large") : null,
-        allPhotos[3] ? mapPhoto(allPhotos[3], "large") : null,
+        pexelsPhotos[1] ? mapPexelsPhoto(pexelsPhotos[1], "large") : null,
+        pexelsPhotos[2] ? mapPexelsPhoto(pexelsPhotos[2], "large") : null,
+        pexelsPhotos[3] ? mapPexelsPhoto(pexelsPhotos[3], "large") : null,
       ],
     };
   } catch (err) {

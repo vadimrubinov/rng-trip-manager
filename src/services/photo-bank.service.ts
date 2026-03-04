@@ -80,6 +80,39 @@ export interface PhotoQuery {
   sort_by?: "ai_score" | "created_at";
 }
 
+// ── Trip type keyword mapping ──────────────────────────
+
+const TRIP_TYPE_KEYWORDS: Record<string, string[]> = {
+  "offshore":     ["ocean", "boat", "offshore", "deep sea", "open water", "charter", "pelagic", "saltwater"],
+  "fly fishing":  ["river", "stream", "fly", "casting", "wading", "rapids", "creek", "fly fishing"],
+  "inshore":      ["coast", "shore", "flat", "shallow", "mangrove", "bay", "estuary", "inshore"],
+  "trolling":     ["boat", "trolling", "rod holders", "wake", "lure", "downrigger"],
+  "ice fishing":  ["ice", "lake", "frozen", "winter", "snow", "ice fishing", "shanty"],
+  "freshwater":   ["lake", "river", "stream", "freshwater", "pond", "reservoir"],
+  "bass fishing": ["bass", "lake", "boat", "lure", "freshwater", "largemouth"],
+  "saltwater":    ["ocean", "saltwater", "sea", "boat", "charter", "marine"],
+  "jigging":      ["jig", "vertical", "deep", "boat", "offshore"],
+  "spearfishing": ["underwater", "spear", "reef", "diving", "freediving"],
+};
+
+/**
+ * Score a photo's ai_description against trip type keywords.
+ * Returns 0 if no tripType or no keywords match.
+ */
+function scoreTripTypeMatch(description: string | null, tripType: string | undefined): number {
+  if (!tripType || !description) return 0;
+
+  const desc = description.toLowerCase();
+  const keywords = TRIP_TYPE_KEYWORDS[tripType.toLowerCase()];
+  if (!keywords) return 0;
+
+  let score = 0;
+  for (const kw of keywords) {
+    if (desc.includes(kw)) score++;
+  }
+  return score;
+}
+
 // ── S3 helpers (using native fetch — no SDK needed) ──
 
 const S3_BUCKET = ENV.S3_PHOTO_BANK_BUCKET;
@@ -283,11 +316,12 @@ export async function queryPhotos(q: PhotoQuery): Promise<{ photos: PhotoBankRow
   return { photos: dataRes.rows, total: countRes.rows[0].total };
 }
 
-/** Get photos for a trip — approved only, by region + category */
+/** Get photos for a trip — approved only, by region + category + optional tripType keyword matching */
 export async function getPhotosForTrip(
   region: string,
   country?: string,
   targetSpecies?: string[],
+  tripType?: string,
 ): Promise<{
   cover: PhotoBankRow | null;
   bands: PhotoBankRow[];
@@ -295,17 +329,20 @@ export async function getPhotosForTrip(
   scenery: PhotoBankRow[];
   fish: PhotoBankRow[];
 }> {
-  // Try region first, fall back to country
   const baseCondition = `approved = TRUE`;
 
   async function findByCategory(category: PhotoCategory, limit: number, species?: string): Promise<PhotoBankRow[]> {
+    // Fetch a wider pool when tripType is provided so we can rank by keyword match
+    const fetchLimit = tripType ? Math.max(limit * 5, 20) : limit;
+
     // Try exact region match
     let { rows } = await pool.query(
       `SELECT * FROM photo_bank
        WHERE ${baseCondition} AND category = $1 AND LOWER(region) = LOWER($2)
        ${species ? "AND LOWER(species) = LOWER($3)" : ""}
-       ORDER BY RANDOM() LIMIT $${species ? 4 : 3}`,
-      species ? [category, region, species, limit] : [category, region, limit],
+       ORDER BY ai_score DESC NULLS LAST, created_at DESC
+       LIMIT $${species ? 4 : 3}`,
+      species ? [category, region, species, fetchLimit] : [category, region, fetchLimit],
     );
 
     // Fall back to country
@@ -314,21 +351,36 @@ export async function getPhotosForTrip(
         `SELECT * FROM photo_bank
          WHERE ${baseCondition} AND category = $1 AND LOWER(country) = LOWER($2)
          ${species ? "AND LOWER(species) = LOWER($3)" : ""}
-         ORDER BY RANDOM() LIMIT $${species ? 4 : 3}`,
-        species ? [category, country, species, limit] : [category, country, limit],
+         ORDER BY ai_score DESC NULLS LAST, created_at DESC
+         LIMIT $${species ? 4 : 3}`,
+        species ? [category, country, species, fetchLimit] : [category, country, fetchLimit],
       );
       rows = res.rows;
     }
 
-    // Fall back to any in category (global pool)
+    // Fall back to global pool
     if (rows.length === 0) {
       const res = await pool.query(
         `SELECT * FROM photo_bank
          WHERE ${baseCondition} AND category = $1
-         ORDER BY RANDOM() LIMIT $2`,
-        [category, limit],
+         ORDER BY ai_score DESC NULLS LAST, created_at DESC
+         LIMIT $2`,
+        [category, fetchLimit],
       );
       rows = res.rows;
+    }
+
+    // Rank by tripType keyword match if applicable
+    if (tripType && rows.length > limit) {
+      rows.sort((a, b) => {
+        const scoreA = scoreTripTypeMatch(a.ai_description, tripType);
+        const scoreB = scoreTripTypeMatch(b.ai_description, tripType);
+        if (scoreB !== scoreA) return scoreB - scoreA;
+        return (b.ai_score ?? 0) - (a.ai_score ?? 0);
+      });
+      rows = rows.slice(0, limit);
+    } else {
+      rows = rows.slice(0, limit);
     }
 
     return rows;
@@ -426,14 +478,12 @@ export async function bulkApprove(ids: string[], approvedBy: string): Promise<nu
 /** Bulk reject (delete) photos */
 export async function bulkReject(ids: string[]): Promise<number> {
   if (!ids.length) return 0;
-  // Get S3 keys first
   const placeholders = ids.map((_, i) => `$${i + 1}`).join(",");
   const { rows } = await pool.query(
     `SELECT id, s3_key FROM photo_bank WHERE id IN (${placeholders})`,
     ids,
   );
 
-  // Delete from S3 (best effort)
   for (const row of rows) {
     try {
       await deleteFromS3(row.s3_key);
@@ -442,7 +492,6 @@ export async function bulkReject(ids: string[]): Promise<number> {
     }
   }
 
-  // Delete from DB
   const result = await pool.query(
     `DELETE FROM photo_bank WHERE id IN (${placeholders})`,
     ids,

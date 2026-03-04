@@ -11,6 +11,9 @@ export interface TripImage {
   url: string;
   photographer: string;
   photographerUrl: string;
+  photoId?: string;
+  source?: "photo_bank" | "pexels";
+  description?: string;
 }
 
 export interface TripImages {
@@ -133,3 +136,4 @@ export interface GeneratedPlan {
   tasks: CreateTaskRequest[];
   locations: CreateLocationRequest[];
 }
+
