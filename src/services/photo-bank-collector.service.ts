@@ -439,12 +439,20 @@ const VALID_AI_CATEGORIES: PhotoCategory[] = ["hero", "action", "scenery", "fish
 
 // ── Target aspect ratios per category ──────────────────
 
-const CATEGORY_RATIOS: Record<string, { w: number; h: number; landscape: boolean }> = {
-  hero:    { w: 16, h: 9,  landscape: true },
-  band:    { w: 21, h: 9,  landscape: true },
-  action:  { w: 4,  h: 3,  landscape: true },
-  scenery: { w: 16, h: 9,  landscape: true },
-  fish:    { w: 3,  h: 4,  landscape: false },
+interface CategorySpec {
+  w: number;       // ratio width
+  h: number;       // ratio height
+  landscape: boolean;
+  minW: number;    // minimum output width px (also final output width)
+  minH: number;    // minimum output height px (also final output height)
+}
+
+const CATEGORY_RATIOS: Record<string, CategorySpec> = {
+  hero:    { w: 16, h: 9,  landscape: true,  minW: 1920, minH: 1080 },
+  band:    { w: 21, h: 9,  landscape: true,  minW: 1920, minH: 823  },
+  action:  { w: 4,  h: 3,  landscape: true,  minW: 800,  minH: 600  },
+  scenery: { w: 3,  h: 2,  landscape: true,  minW: 1200, minH: 800  },
+  fish:    { w: 3,  h: 4,  landscape: false, minW: 800,  minH: 1067 },
 };
 
 /** Check if image is landscape orientation */
@@ -475,10 +483,52 @@ function fixCategoryByOrientation(category: PhotoCategory, width: number, height
   return category;
 }
 
-/** Center-crop buffer to target aspect ratio (placeholder — no native deps) */
-async function smartCrop(buffer: Buffer, category: string, srcW: number, srcH: number): Promise<{ buffer: Buffer; width: number; height: number; contentType: string }> {
-  // Photos uploaded as-is; cropping can be added when sharp is available
-  return { buffer, width: srcW, height: srcH, contentType: "image/jpeg" };
+/** Center-crop + resize to exact category spec using sharp.
+ *
+ * Rules:
+ *  1. Source too small (after crop would be < minW or minH) → throws Error("too_small")
+ *  2. Crop to target ratio (center) → resize down to minW × minH → JPEG q85
+ */
+async function smartCrop(
+  buffer: Buffer,
+  category: string,
+  srcW: number,
+  srcH: number,
+): Promise<{ buffer: Buffer; width: number; height: number; contentType: string }> {
+  const spec = CATEGORY_RATIOS[category] || CATEGORY_RATIOS.scenery;
+  const targetRatio = spec.w / spec.h;
+  const srcRatio = srcW / srcH;
+
+  // ── Step 1: calculate crop region (center crop to target ratio) ──
+  let cropW = srcW;
+  let cropH = srcH;
+
+  if (srcRatio > targetRatio) {
+    // Source is wider than target — crop sides
+    cropW = Math.round(srcH * targetRatio);
+  } else if (srcRatio < targetRatio) {
+    // Source is taller than target — crop top/bottom
+    cropH = Math.round(srcW / targetRatio);
+  }
+
+  const left = Math.round((srcW - cropW) / 2);
+  const top  = Math.round((srcH - cropH) / 2);
+
+  // ── Step 2: reject if cropped region is smaller than minimum ──
+  if (cropW < spec.minW || cropH < spec.minH) {
+    throw new Error("too_small");
+  }
+
+  // ── Step 3: crop + resize to exact output size ──
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const sharpLib = require("sharp") as typeof import("sharp");
+  const out = await sharpLib(buffer)
+    .extract({ left, top, width: cropW, height: cropH })
+    .resize(spec.minW, spec.minH, { fit: "fill" })
+    .jpeg({ quality: 85, progressive: true })
+    .toBuffer();
+
+  return { buffer: out, width: spec.minW, height: spec.minH, contentType: "image/jpeg" };
 }
 
 
@@ -579,8 +629,14 @@ async function processCandidates(
         finalWidth = cropped.width;
         finalHeight = cropped.height;
       } catch (err: any) {
+        if (err.message === "too_small") {
+          // Image too small for this category after crop — skip entirely
+          log.debug({ url: c.url, category: finalCategory, w: imgW, h: imgH }, "photo_bank.crop.too_small");
+          result.ai_rejected++;
+          return;
+        }
+        // Other crop errors — upload original as fallback
         log.warn({ err: err.message, url: c.url }, "photo_bank.crop.error");
-        // Upload original if crop fails
       }
 
       // 10. Upload
