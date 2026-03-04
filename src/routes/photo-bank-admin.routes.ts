@@ -114,9 +114,26 @@ function getAdminHtml(apiKey: string): string {
   .progress-item .p-value { font-size: 18px; font-weight: 600; }
 
   /* Lightbox */
-  .lightbox { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1000; display: none; align-items: center; justify-content: center; cursor: pointer; }
+  .lightbox { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.92); z-index: 1000; display: none; flex-direction: column; align-items: center; justify-content: center; }
   .lightbox.show { display: flex; }
-  .lightbox img { max-width: 90vw; max-height: 90vh; object-fit: contain; }
+  .lightbox-img-wrap { position: relative; display: flex; align-items: center; justify-content: center; }
+  .lightbox img { max-width: 90vw; max-height: 75vh; object-fit: contain; display: block; border-radius: 4px; }
+  .lightbox-meta { margin-top: 14px; text-align: center; max-width: 90vw; }
+  .lightbox-meta .lb-desc { color: #ccc; font-size: 14px; margin-bottom: 10px; line-height: 1.5; }
+  .lightbox-meta .lb-badges { display: flex; gap: 10px; justify-content: center; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+  .lightbox-meta .lb-cat { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; padding: 4px 12px; border-radius: 20px; background: var(--accent); color: #fff; }
+  .lightbox-meta .lb-size { font-size: 13px; color: var(--dim); }
+  .lightbox-meta .lb-status { font-size: 12px; padding: 3px 10px; border-radius: 20px; }
+  .lightbox-meta .lb-status.pending { background: #2a2a1a; color: #f0c040; border: 1px solid #f0c040; }
+  .lightbox-meta .lb-status.approved { background: #1a2a1a; color: #4caf50; border: 1px solid #4caf50; }
+  .lightbox-actions { display: flex; gap: 14px; margin-top: 4px; }
+  .lightbox-actions .btn { min-width: 120px; font-size: 15px; padding: 10px 24px; }
+  .lightbox-close { position: fixed; top: 16px; right: 20px; font-size: 28px; color: #aaa; cursor: pointer; line-height: 1; z-index: 1001; }
+  .lightbox-close:hover { color: #fff; }
+  .lightbox-nav { position: fixed; top: 50%; transform: translateY(-50%); font-size: 36px; color: #aaa; cursor: pointer; padding: 10px; z-index: 1001; user-select: none; }
+  .lightbox-nav:hover { color: #fff; }
+  .lightbox-nav.prev { left: 10px; }
+  .lightbox-nav.next { right: 10px; }
 
   /* Loading */
   .loading { text-align: center; padding: 40px; color: var(--dim); }
@@ -232,8 +249,23 @@ function getAdminHtml(apiKey: string): string {
 </div>
 
 <!-- Lightbox -->
-<div class="lightbox" id="lightbox" onclick="closeLightbox()">
-  <img id="lightbox-img" src="">
+<div class="lightbox" id="lightbox">
+  <span class="lightbox-close" onclick="closeLightbox()">✕</span>
+  <span class="lightbox-nav prev" onclick="lbNav(-1)">&#8249;</span>
+  <span class="lightbox-nav next" onclick="lbNav(1)">&#8250;</span>
+  <div class="lightbox-img-wrap">
+    <img id="lightbox-img" src="">
+  </div>
+  <div class="lightbox-meta">
+    <div class="lb-desc" id="lb-desc"></div>
+    <div class="lb-badges">
+      <span class="lb-cat" id="lb-cat"></span>
+      <span class="score-badge" id="lb-score"></span>
+      <span class="lb-size" id="lb-size"></span>
+      <span class="lb-status" id="lb-status"></span>
+    </div>
+    <div class="lightbox-actions" id="lb-actions"></div>
+  </div>
 </div>
 
 <script>
@@ -514,7 +546,7 @@ function renderModGrid() {
     const isSelected = selectedPhotos.has(p.id);
     return '<div class="photo-card' + (isSelected ? ' selected' : '') + '" id="card-' + p.id + '">' +
       '<input type="checkbox" class="checkbox" ' + (isSelected ? 'checked' : '') + ' onchange="toggleSelect(\\'' + p.id + '\\')">' +
-      '<img src="' + esc(p.cdn_url) + '" onclick="openLightbox(\\'' + esc(p.cdn_url) + '\\')" loading="lazy" onerror="this.src=\\'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22280%22 height=%22200%22><rect fill=%22%231a1d27%22 width=%22280%22 height=%22200%22/><text fill=%22%238b8fa3%22 x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22>Image Error</text></svg>\\'">' +
+      '<img src="' + esc(p.cdn_url) + '" onclick="openLightbox(' + i + ')" loading="lazy" onerror="this.src=\\'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22280%22 height=%22200%22><rect fill=%22%231a1d27%22 width=%22280%22 height=%22200%22/><text fill=%22%238b8fa3%22 x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22>Image Error</text></svg>\\'">' +
       '<div class="info">' +
       '<div class="desc">' + esc(p.ai_description || '—') + '</div>' +
       '<div class="meta">' +
@@ -613,11 +645,64 @@ async function changeCategory(id, newCat) {
 }
 
 // ── Lightbox ──
-function openLightbox(url) {
-  document.getElementById('lightbox-img').src = url;
+let lbIndex = -1;
+
+function openLightbox(idx) {
+  lbIndex = idx;
+  renderLightbox();
   document.getElementById('lightbox').classList.add('show');
   history.pushState({ lightbox: true }, '');
 }
+
+function renderLightbox() {
+  const p = moderationPhotos[lbIndex];
+  if (!p) return;
+  document.getElementById('lightbox-img').src = p.cdn_url;
+  document.getElementById('lb-desc').textContent = p.ai_description || '—';
+  document.getElementById('lb-cat').textContent = p.category || p.ai_category || '?';
+  const scoreEl = document.getElementById('lb-score');
+  scoreEl.textContent = p.ai_score || '?';
+  scoreEl.className = 'score-badge ' + ((p.ai_score||0)>=7?'score-high':(p.ai_score||0)>=4?'score-mid':'score-low');
+  document.getElementById('lb-size').textContent = (p.width && p.height) ? p.width + ' × ' + p.height + ' px' : '';
+  const statusEl = document.getElementById('lb-status');
+  statusEl.textContent = p.approved ? 'Approved' : 'Pending';
+  statusEl.className = 'lb-status ' + (p.approved ? 'approved' : 'pending');
+  const actions = document.getElementById('lb-actions');
+  actions.innerHTML =
+    (!p.approved ? '<button class="btn btn-success" onclick="lbApprove()">✓ Approve</button>' : '') +
+    '<button class="btn btn-danger" onclick="lbDelete()">✕ Delete</button>';
+}
+
+async function lbApprove() {
+  const p = moderationPhotos[lbIndex];
+  if (!p || p.approved) return;
+  await api('POST', '/approve', { id: p.id, approved_by: 'vadim' });
+  p.approved = true;
+  renderModGrid();
+  lbNav(1);
+}
+
+async function lbDelete() {
+  const p = moderationPhotos[lbIndex];
+  if (!p) return;
+  if (!confirm('Delete this photo?')) return;
+  await api('POST', '/reject', { id: p.id });
+  moderationPhotos.splice(lbIndex, 1);
+  renderModGrid();
+  if (moderationPhotos.length === 0) { closeLightbox(); return; }
+  if (lbIndex >= moderationPhotos.length) lbIndex = moderationPhotos.length - 1;
+  renderLightbox();
+}
+
+function lbNav(dir) {
+  // Skip to next pending when navigating after action
+  let next = lbIndex + dir;
+  if (next < 0) next = 0;
+  if (next >= moderationPhotos.length) { closeLightbox(); return; }
+  lbIndex = next;
+  renderLightbox();
+}
+
 function closeLightbox() {
   document.getElementById('lightbox').classList.remove('show');
   document.getElementById('lightbox-img').src = '';
@@ -627,7 +712,12 @@ window.addEventListener('popstate', function(e) {
     closeLightbox();
   }
 });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
+document.addEventListener('keydown', e => {
+  if (!document.getElementById('lightbox').classList.contains('show')) return;
+  if (e.key === 'Escape') closeLightbox();
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') lbNav(1);
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') lbNav(-1);
+});
 
 // ── Helpers ──
 function esc(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
