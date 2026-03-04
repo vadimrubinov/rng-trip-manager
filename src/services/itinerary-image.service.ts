@@ -1,6 +1,6 @@
 import { log } from "../lib/pino-logger";
 import { TripImage, TripImages } from "../types";
-import { getPhotosForTrip, PhotoBankRow } from "./photo-bank.service";
+import { getPhotosForTrip, PhotoBankRow } from "./photo-bank-readonly.service";
 
 /* ── Types ── */
 

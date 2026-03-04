@@ -7,8 +7,6 @@ import { publicRouter } from "./routes/public.routes";
 import { emailRouter } from "./routes/email.routes";
 import { nudgeRouter } from "./routes/nudge.routes";
 import { vendorRouter } from "./routes/vendor.routes";
-import { photoBankRouter } from "./routes/photo-bank.routes";
-import { photoBankAdminRouter } from "./routes/photo-bank-admin.routes";
 import { webhookRouter } from "./routes/webhook.routes";
 import { nudgeService } from "./services/nudge/nudge.service";
 import { processEnrichmentQueue } from "./services/enrichment.service";
@@ -20,6 +18,7 @@ import { asyncHandler } from "./lib/async-handler";
 import { errorMiddleware, registerProcessHandlers } from "./lib/error-handler";
 import { registerGracefulShutdown } from "./lib/graceful-shutdown";
 import { deepHealthCheck } from "./lib/health";
+import { getPhotosForTrip } from "./services/photo-bank-readonly.service";
 
 // Interval refs for graceful shutdown
 let draftCleanupInterval: ReturnType<typeof setInterval> | null = null;
@@ -111,7 +110,6 @@ async function main() {
   app.use("/api/webhooks", webhookRouter);
 
   // Photo Bank Admin (query param auth — like geo-orchestrator)
-  app.use("/admin", photoBankAdminRouter);
 
   // Protected routes (require x-api-secret from bitescout-web)
   app.use("/api/trips", requireApiSecret, tripsRouter);
@@ -126,7 +124,20 @@ async function main() {
   app.use("/api/trips/vendor", requireApiSecret, vendorRouter);
 
   // Photo Bank routes (protected)
-  app.use("/api/photo-bank", requireApiSecret, photoBankRouter);
+
+
+  // Photo Bank read-only endpoint (write operations moved to geo-orchestrator)
+  app.post("/api/photo-bank/for-trip", requireApiSecret, async (req, res) => {
+    try {
+      const { region, country, targetSpecies } = req.body;
+      if (!region) return res.status(400).json({ error: "region is required" });
+      const result = await getPhotosForTrip(region, country, targetSpecies);
+      res.json(result);
+    } catch (err: any) {
+      log.error({ err }, "photo_bank.for_trip.error");
+      res.status(500).json({ error: "Failed to get trip photos" });
+    }
+  });
 
   // M1: Error middleware — MUST be LAST
   app.use(errorMiddleware);
