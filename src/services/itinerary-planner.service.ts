@@ -101,21 +101,18 @@ function parseRawDate(dateRaw: string): Date | null {
     август: 7, сентябр: 8, октябр: 9, ноябр: 10, декабр: 11,
   };
 
-  // Try "Month Day" or "Day Month"
+  // Try "Month Day" or "Day Month" — ignore any year in the raw string
   const parts = cleaned.split(/[\s,]+/).filter(Boolean);
 
   let month = -1;
   let day = -1;
-  let year = new Date().getFullYear();
 
   for (const part of parts) {
     const num = parseInt(part, 10);
     if (!isNaN(num)) {
-      if (num > 31) {
-        year = num;
-      } else if (day === -1) {
-        day = num;
-      }
+      // Skip years (4-digit numbers or numbers > 31) — always use current year
+      if (num > 31) continue;
+      if (day === -1) day = num;
     } else {
       const lower = part.toLowerCase();
       for (const [key, val] of Object.entries(MONTHS)) {
@@ -128,6 +125,14 @@ function parseRawDate(dateRaw: string): Date | null {
   }
 
   if (month === -1 || day === -1) return null;
+
+  // Always use current year; if the resulting date is in the past, advance to next year
+  const now = new Date();
+  let year = now.getFullYear();
+  const candidate = new Date(year, month, day);
+  if (candidate < now) {
+    year += 1;
+  }
   return new Date(year, month, day);
 }
 
