@@ -1,0 +1,64 @@
+name: Deploy Notification
+on:
+  push:
+    branches: [main]
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify deploy started
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          COMMIT_MSG=$(echo "${{ github.event.head_commit.message }}" | head -1)
+          COMMIT_SHA="${{ github.sha }}"
+          REPO="${{ github.repository }}"
+          SERVICE=$(echo "$REPO" | sed 's/vadimrubinov\///')
+
+          TEXT="🚀 *DEPLOY* [$SERVICE]
+          Commit: \`${COMMIT_SHA:0:7}\`
+          Message: $COMMIT_MSG"
+
+          curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+            -d chat_id="$TELEGRAM_CHAT_ID" \
+            -d text="$TEXT" \
+            -d parse_mode="Markdown" \
+            -d disable_web_page_preview=true > /dev/null 2>&1
+
+      - name: Wait for Render deploy
+        run: sleep 90
+
+      - name: Verify deploy
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          SERVICE=$(echo "${{ github.repository }}" | sed 's/vadimrubinov\///')
+          HEALTH_URL="https://rng-trip-manager.onrender.com/health"
+
+          HTTP_CODE=$(curl -s -o /tmp/health.json -w "{%{http_code}}" "$HEALTH_URL" || echo "000")
+          BODY=$(cat /tmp/health.json 2>/dev/null || echo "{}")
+
+          if [ "$HTTP_CODE" = "200" ]; then
+            STATUS=$(echo "$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','unknown'))" 2>/dev/null || echo "unknown")
+            if [ "$STATUS" != "down" ]; then
+              TEXT="✅ *DEPLOY OK* [$SERVICE]
+          Health: $STATUS
+          Commit: \`${{GITHUB_SHA:0:7}}\`"
+            else
+              TEXT="🔴 *DEPLOY FAILED* [$SERVICE]
+          Health status: down
+          Commit: \`${{GITHUB_SHA:0:7}}\`"
+            fi
+          else
+            TEXT="🔴 *DEPLOY FAILED* [$SERVICE]
+          Health HTTP: $HTTP_CODE
+          Commit: \`${{GITHUB_SHA:0:7}}\`"
+          fi
+
+          curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+            -d chat_id="$TELEGRAM_CHAT_ID" \
+            -d text="$TEXT" \
+            -d parse_mode="Markdown" \
+            -d disable_web_page_preview=true > /dev/null 2>&1
