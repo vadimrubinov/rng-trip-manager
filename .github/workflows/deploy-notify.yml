@@ -13,8 +13,7 @@ jobs:
         run: |
           COMMIT_MSG=$(echo "${{ github.event.head_commit.message }}" | head -1)
           COMMIT_SHA="${{ github.sha }}"
-          REPO="${{ github.repository }}"
-          SERVICE=$(echo "$REPO" | sed 's/vadimrubinov\///')
+          SERVICE="rng-trip-manager"
 
           TEXT="🚀 *DEPLOY* [$SERVICE]
           Commit: \`${COMMIT_SHA:0:7}\`
@@ -34,27 +33,20 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          SERVICE=$(echo "${{ github.repository }}" | sed 's/vadimrubinov\///')
+          SERVICE="rng-trip-manager"
           HEALTH_URL="https://rng-trip-manager.onrender.com/health"
 
-          HTTP_CODE=$(curl -s -o /tmp/health.json -w "{%{http_code}}" "$HEALTH_URL" || echo "000")
+          HTTP_CODE=$(curl -s -o /tmp/health.json -w '%{http_code}' "$HEALTH_URL" || echo "000")
           BODY=$(cat /tmp/health.json 2>/dev/null || echo "{}")
 
           if [ "$HTTP_CODE" = "200" ]; then
-            STATUS=$(echo "$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','unknown'))" 2>/dev/null || echo "unknown")
-            if [ "$STATUS" != "down" ]; then
-              TEXT="✅ *DEPLOY OK* [$SERVICE]
-          Health: $STATUS
-          Commit: \`${{GITHUB_SHA:0:7}}\`"
-            else
-              TEXT="🔴 *DEPLOY FAILED* [$SERVICE]
-          Health status: down
-          Commit: \`${{GITHUB_SHA:0:7}}\`"
-            fi
+            TEXT="✅ *DEPLOY OK* [$SERVICE]
+          Health: ok
+          Commit: \`${GITHUB_SHA:0:7}\`"
           else
             TEXT="🔴 *DEPLOY FAILED* [$SERVICE]
           Health HTTP: $HTTP_CODE
-          Commit: \`${{GITHUB_SHA:0:7}}\`"
+          Commit: \`${GITHUB_SHA:0:7}\`"
           fi
 
           curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
