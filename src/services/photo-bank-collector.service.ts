@@ -475,10 +475,76 @@ function fixCategoryByOrientation(category: PhotoCategory, width: number, height
   return category;
 }
 
-/** Center-crop buffer to target aspect ratio (placeholder — no native deps) */
+// ── Target max dimensions per category ─────────────────
+const CATEGORY_MAX: Record<string, { maxW: number; maxH: number }> = {
+  hero:    { maxW: 1920, maxH: 1080 },
+  band:    { maxW: 1920, maxH: 823 },
+  action:  { maxW: 1200, maxH: 900 },
+  scenery: { maxW: 1280, maxH: 720 },
+  fish:    { maxW: 900,  maxH: 1200 },
+};
+
+/** Center-crop buffer to target aspect ratio using jimp (pure JS, no native deps) */
 async function smartCrop(buffer: Buffer, category: string, srcW: number, srcH: number): Promise<{ buffer: Buffer; width: number; height: number; contentType: string }> {
-  // Photos uploaded as-is; cropping can be added when sharp is available
-  return { buffer, width: srcW, height: srcH, contentType: "image/jpeg" };
+  const spec = CATEGORY_RATIOS[category];
+  const maxSpec = CATEGORY_MAX[category];
+  if (!spec || !maxSpec) {
+    return { buffer, width: srcW, height: srcH, contentType: "image/jpeg" };
+  }
+
+  try {
+    const { Jimp } = await import("jimp");
+
+    const image = await Jimp.read(buffer);
+    const origW = image.width;
+    const origH = image.height;
+
+    // Calculate target aspect ratio
+    const targetRatio = spec.w / spec.h;
+    const currentRatio = origW / origH;
+
+    // Calculate crop dimensions to match target ratio (center crop)
+    let cropW: number, cropH: number;
+    if (currentRatio > targetRatio) {
+      // Image is wider — crop sides
+      cropH = origH;
+      cropW = Math.round(origH * targetRatio);
+    } else {
+      // Image is taller — crop top/bottom
+      cropW = origW;
+      cropH = Math.round(origW / targetRatio);
+    }
+
+    // Center crop coordinates
+    const cropX = Math.round((origW - cropW) / 2);
+    const cropY = Math.round((origH - cropH) / 2);
+
+    // Crop to target ratio
+    image.crop({ x: cropX, y: cropY, w: cropW, h: cropH });
+
+    // Resize down if larger than max dimensions
+    if (cropW > maxSpec.maxW || cropH > maxSpec.maxH) {
+      image.resize({ w: maxSpec.maxW, h: maxSpec.maxH });
+    }
+
+    const outBuffer = await image.getBuffer("image/jpeg", { quality: 85 });
+
+    log.info({
+      category,
+      original: origW + "x" + origH,
+      cropped: image.width + "x" + image.height,
+    }, "photo_bank.crop.success");
+
+    return {
+      buffer: Buffer.from(outBuffer),
+      width: image.width,
+      height: image.height,
+      contentType: "image/jpeg",
+    };
+  } catch (err: any) {
+    log.warn({ err: err.message, category, src: srcW + "x" + srcH }, "photo_bank.crop.fallback");
+    return { buffer, width: srcW, height: srcH, contentType: "image/jpeg" };
+  }
 }
 
 
@@ -595,6 +661,8 @@ async function processCandidates(
         ai_score: aiResult.score,
         ai_category: aiResult.category,
         ai_description: aiResult.description,
+        width: finalWidth,
+        height: finalHeight,
         buffer: finalBuffer,
         contentType: finalContentType,
       });

@@ -22,7 +22,8 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "resend": "^6.0.0",
-    "uuid": "^9.0.1"
+    "uuid": "^9.0.1",
+    "jimp": "^1.6.0"
   },
   "devDependencies": {
     "@types/compression": "^1.8.1",
