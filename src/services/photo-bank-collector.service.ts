@@ -3,7 +3,19 @@ import { pool } from "../db/pool";
 import { addCandidateFromBuffer, downloadImage, PhotoCategory, PhotoSource } from "./photo-bank.service";
 import { log } from "../lib/pino-logger";
 import { withRetry } from "../lib/retry";
-import sharp from "sharp";
+// sharp loaded lazily — may not be available on all platforms
+let _sharp: any = null;
+function getSharp(): any {
+  if (_sharp === null) {
+    try {
+      _sharp = require("sharp");
+    } catch (err) {
+      log.warn("sharp not available, cropping disabled");
+      _sharp = false;
+    }
+  }
+  return _sharp || null;
+}
 
 // ── Types ──────────────────────────────────────────────
 
@@ -434,7 +446,7 @@ async function smartCrop(buffer: Buffer, category: string): Promise<{ buffer: Bu
   const spec = CATEGORY_RATIOS[category] || CATEGORY_RATIOS.scenery;
   const targetRatio = spec.w / spec.h;
 
-  const metadata = await sharp(buffer).metadata();
+  const metadata = await sharpLib(buffer).metadata();
   const srcW = metadata.width || 800;
   const srcH = metadata.height || 600;
   const srcRatio = srcW / srcH;
@@ -454,7 +466,7 @@ async function smartCrop(buffer: Buffer, category: string): Promise<{ buffer: Bu
   const top = Math.round((srcH - cropH) / 2);
 
   // Extract region (center crop) + convert to jpeg for consistency
-  const cropped = await sharp(buffer)
+  const cropped = await sharpLib(buffer)
     .extract({ left, top, width: cropW, height: cropH })
     .jpeg({ quality: 85 })
     .toBuffer();
@@ -538,9 +550,14 @@ async function processCandidates(
 
       // 8. Get dimensions + fix orientation
       let metadata: { width?: number; height?: number };
-      try {
-        metadata = await sharp(buffer).metadata();
-      } catch {
+      const sharpInst = getSharp();
+      if (sharpInst) {
+        try {
+          metadata = await sharpInst(buffer).metadata();
+        } catch {
+          metadata = { width: 800, height: 600 };
+        }
+      } else {
         metadata = { width: 800, height: 600 };
       }
       const imgW = metadata.width || 800;
