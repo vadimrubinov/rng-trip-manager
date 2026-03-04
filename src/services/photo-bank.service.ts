@@ -260,6 +260,8 @@ export async function addCandidateFromBuffer(req: AddCandidateRequest & { buffer
     ai_score: req.ai_score,
     ai_category: req.ai_category,
     ai_description: req.ai_description,
+    width: req.width,
+    height: req.height,
   });
 }
 
