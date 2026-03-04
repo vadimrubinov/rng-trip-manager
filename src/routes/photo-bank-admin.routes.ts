@@ -413,33 +413,21 @@ function pollCollectStatus() {
   }, 2000);
 }
 
-function renderCollectProgress(result) {
-    var agg = {
-      vendors_scanned: result.vendors_scanned || 0,
-      images_found: result.images_found || 0,
-      ai_rejected: result.ai_rejected || 0,
-      ai_passed: result.ai_passed || 0,
-      uploaded: result.uploaded || 0,
-      errors: result.errors || 0,
-    };
-    document.getElementById('collect-progress-data').innerHTML =
-      Object.entries(agg).map(function(e) {
-        return '<div class="progress-item"><div class="p-label">' + e[0].replace(/_/g, ' ') + '</div><div class="p-value">' + e[1] + '</div></div>';
-      }).join('');
-    var progress = result.progress || {};
-    var catHtml = Object.keys(progress).length ?
-      '<div style="font-size:12px;margin-top:8px;">' +
-      Object.entries(progress).map(function(e) {
-        var cat = e[0], p = e[1];
-        var color = p.done ? 'var(--green)' : p.collected > 0 ? 'var(--orange)' : 'var(--dim)';
-        return '<span class="cat-badge cat-' + cat + '" style="margin-right:8px;">' + cat + ': <strong style="color:' + color + ';">' + p.collected + '/' + p.target + (p.done ? ' \u2713' : '') + '</strong></span>';
-      }).join('') + '</div>' : '';
-    document.getElementById('collect-categories').innerHTML = catHtml;
-    if (result.stopped_reason) {
-      document.getElementById('collect-status-text').textContent =
-        result.stopped_reason === 'all_targets_met' ? 'Done - All targets met \u2713' : 'Done - Sources exhausted';
-    }
+function renderCollectProgress(results) {
+  const agg = { records_scanned: 0, images_found: 0, ai_rejected: 0, ai_passed: 0, uploaded: 0, errors: 0 };
+  const cats = {};
+  for (const r of results) {
+    for (const k of Object.keys(agg)) agg[k] += r[k] || 0;
+    for (const [c, n] of Object.entries(r.categories || {})) cats[c] = (cats[c] || 0) + n;
   }
+  document.getElementById('collect-progress-data').innerHTML =
+    Object.entries(agg).map(([k, v]) =>
+      '<div class="progress-item"><div class="p-label">' + k.replace(/_/g, ' ') + '</div><div class="p-value">' + v + '</div></div>'
+    ).join('');
+  document.getElementById('collect-categories').innerHTML = Object.keys(cats).length ?
+    '<div style="font-size:12px;color:var(--dim);">Categories: ' +
+    Object.entries(cats).map(([c, n]) => '<span class="cat-badge cat-' + c + '">' + c + ': ' + n + '</span>').join(' ') + '</div>' : '';
+}
 
 async function stopCollect() {
   if (!currentCollectJobId) return;
@@ -620,10 +608,17 @@ async function changeCategory(id, newCat) {
 function openLightbox(url) {
   document.getElementById('lightbox-img').src = url;
   document.getElementById('lightbox').classList.add('show');
+  history.pushState({ lightbox: true }, '');
 }
 function closeLightbox() {
   document.getElementById('lightbox').classList.remove('show');
+  document.getElementById('lightbox-img').src = '';
 }
+window.addEventListener('popstate', function(e) {
+  if (document.getElementById('lightbox').classList.contains('show')) {
+    closeLightbox();
+  }
+});
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
 
 // ── Helpers ──
