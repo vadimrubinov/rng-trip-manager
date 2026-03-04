@@ -226,6 +226,7 @@ photoBankRouter.post("/collect-stop/:jobId", async (req: Request, res: Response)
 
 /** POST /collect — collect photo candidates from sources */
 photoBankRouter.post("/collect", async (req: Request, res: Response) => {
+  log.info({ body: req.body, contentType: req.headers["content-type"] }, "photo_bank.collect.request_debug");
   try {
     const { source, region, target, dryRun, concurrency } = req.body;
 
@@ -248,8 +249,8 @@ photoBankRouter.post("/collect", async (req: Request, res: Response) => {
     const jobId = startCollect(request);
     res.json({ jobId, status: "started", message: "Use GET /api/photo-bank/collect-status/:jobId to check progress" });
   } catch (err: any) {
-    log.error({ err }, "photo_bank.collect.error");
-    res.status(500).json({ error: 'Collect failed: ' + err.message });
+    log.error({ err, stack: err.stack }, "photo_bank.collect.error");
+    res.status(500).json({ error: 'Collect failed: ' + err.message, stack: err.stack });
   }
 });
 
