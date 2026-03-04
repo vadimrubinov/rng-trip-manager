@@ -37,7 +37,6 @@ jobs:
           HEALTH_URL="https://rng-trip-manager.onrender.com/health"
 
           HTTP_CODE=$(curl -s -o /tmp/health.json -w '%{http_code}' "$HEALTH_URL" || echo "000")
-          BODY=$(cat /tmp/health.json 2>/dev/null || echo "{}")
 
           if [ "$HTTP_CODE" = "200" ]; then
             TEXT="✅ *DEPLOY OK* [$SERVICE]
@@ -46,7 +45,9 @@ jobs:
           else
             TEXT="🔴 *DEPLOY FAILED* [$SERVICE]
           Health HTTP: $HTTP_CODE
-          Commit: \`${GITHUB_SHA:0:7}\`"
+          Commit: \`${GITHUB_SHA:0:7}\`
+
+          Rollback: rng-monitoring → Actions → Rollback → select $SERVICE"
           fi
 
           curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
