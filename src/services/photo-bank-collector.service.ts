@@ -49,22 +49,7 @@ function readImageDimensions(buffer: Buffer): { width: number; height: number } 
   return { width: 800, height: 600 }; // fallback
 }
 
-// Canvas-based crop using sharp (lazy loaded)
-let _sharp: any = null;
-let _sharpChecked = false;
-function getSharp(): any {
-  if (!_sharpChecked) {
-    _sharpChecked = true;
-    try {
-      _sharp = require("sharp");
-      log.info("sharp loaded successfully — cropping enabled");
-    } catch (err) {
-      log.warn("sharp not available — cropping disabled, photos uploaded as-is");
-      _sharp = null;
-    }
-  }
-  return _sharp;
-}
+
 
 // ── Types ──────────────────────────────────────────────
 
@@ -490,38 +475,10 @@ function fixCategoryByOrientation(category: PhotoCategory, width: number, height
   return category;
 }
 
-/** Center-crop buffer to target aspect ratio */
+/** Center-crop buffer to target aspect ratio (placeholder — no native deps) */
 async function smartCrop(buffer: Buffer, category: string, srcW: number, srcH: number): Promise<{ buffer: Buffer; width: number; height: number; contentType: string }> {
-  const sharpLib = getSharp();
-  if (!sharpLib) {
-    return { buffer, width: srcW, height: srcH, contentType: "image/jpeg" };
-  }
-  const spec = CATEGORY_RATIOS[category] || CATEGORY_RATIOS.scenery;
-  const targetRatio = spec.w / spec.h;
-
-  const srcRatio = srcW / srcH;
-
-  let cropW = srcW;
-  let cropH = srcH;
-
-  if (srcRatio > targetRatio) {
-    // Source is wider — crop sides
-    cropW = Math.round(srcH * targetRatio);
-  } else if (srcRatio < targetRatio) {
-    // Source is taller — crop top/bottom
-    cropH = Math.round(srcW / targetRatio);
-  }
-
-  const left = Math.round((srcW - cropW) / 2);
-  const top = Math.round((srcH - cropH) / 2);
-
-  // Extract region (center crop) + convert to jpeg for consistency
-  const cropped = await sharpLib(buffer)
-    .extract({ left, top, width: cropW, height: cropH })
-    .jpeg({ quality: 85 })
-    .toBuffer();
-
-  return { buffer: cropped, width: cropW, height: cropH, contentType: "image/jpeg" };
+  // Photos uploaded as-is; cropping can be added when sharp is available
+  return { buffer, width: srcW, height: srcH, contentType: "image/jpeg" };
 }
 
 
