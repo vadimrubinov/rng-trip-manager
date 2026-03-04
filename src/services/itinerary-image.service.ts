@@ -15,6 +15,65 @@ interface ParsedDayInput {
   accommodation: string | null;
 }
 
+/* ── Default photos (neutral, work for any trip) ──────────────────────────────
+ * Stored in S3 rng-bitescout-backups bucket under defaults/ prefix.
+ * Replace URLs here when uploading real approved photos.
+ * Structure: one array per slot type, first element is primary default.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+const S3_BASE = "https://rng-bitescout-backups.s3.us-east-1.amazonaws.com/photo-defaults";
+
+const DEFAULT_PHOTOS = {
+  // Hero / cover — wide landscape with fishing boat or trophy catch
+  cover: [
+    { url: `${S3_BASE}/cover-01.jpg`, label: "Fishing boat on open water" },
+    { url: `${S3_BASE}/cover-02.jpg`, label: "Trophy catch at sea" },
+    { url: `${S3_BASE}/cover-03.jpg`, label: "Sunrise on the water" },
+  ],
+
+  // Footer — second hero, different mood from cover
+  footer: [
+    { url: `${S3_BASE}/footer-01.jpg`, label: "Scenic coastline" },
+    { url: `${S3_BASE}/footer-02.jpg`, label: "Fishing crew on deck" },
+  ],
+
+  // Day photos by day type — one per slot
+  dayFishing:    { url: `${S3_BASE}/day-fishing.jpg`,    label: "Fishing day" },
+  dayTravel:     { url: `${S3_BASE}/day-travel.jpg`,     label: "Travel day" },
+  daySightseeing:{ url: `${S3_BASE}/day-sightseeing.jpg`,label: "Sightseeing day" },
+  dayRest:       { url: `${S3_BASE}/day-rest.jpg`,       label: "Rest day" },
+  dayMixed:      { url: `${S3_BASE}/day-mixed.jpg`,      label: "Mixed day" },
+
+  // Bands
+  actionBand:  { url: `${S3_BASE}/band-action.jpg`,  label: "Action fishing" },
+  gearBand:    { url: `${S3_BASE}/band-gear.jpg`,    label: "Fishing gear" },
+  seasonBand:  { url: `${S3_BASE}/band-season.jpg`,  label: "Scenic season" },
+
+  // Fish photo — generic trophy fish
+  fish: { url: `${S3_BASE}/fish-trophy.jpg`, label: "Trophy fish" },
+};
+
+function makeDefault(entry: { url: string; label: string }): TripImage {
+  return {
+    url: entry.url,
+    photographer: "",
+    photographerUrl: "",
+    source: "photo_bank",
+    description: entry.label,
+  };
+}
+
+function defaultDayPhoto(type: ParsedDayInput["type"]): TripImage {
+  const map: Record<ParsedDayInput["type"], { url: string; label: string }> = {
+    fishing:     DEFAULT_PHOTOS.dayFishing,
+    travel:      DEFAULT_PHOTOS.dayTravel,
+    sightseeing: DEFAULT_PHOTOS.daySightseeing,
+    rest:        DEFAULT_PHOTOS.dayRest,
+    mixed:       DEFAULT_PHOTOS.dayMixed,
+  };
+  return makeDefault(map[type] || DEFAULT_PHOTOS.dayMixed);
+}
+
 /* ── Helpers ── */
 
 function mapPhotoBankRow(row: PhotoBankRow): TripImage {
@@ -28,43 +87,23 @@ function mapPhotoBankRow(row: PhotoBankRow): TripImage {
   };
 }
 
-/**
- * Select the best day for the hero (cover) image:
- * 1. First fishing day with lodge/charter in vendors
- * 2. First fishing day
- * 3. Day with most keyPlaces
- */
 function selectHeroDay(days: ParsedDayInput[]): ParsedDayInput {
-  // Priority 1: fishing day with lodge/charter vendor
   const fishingWithVendor = days.find(
     d => d.type === "fishing" && d.vendors.some(v =>
       /lodge|charter|outfitter/i.test(v)
     )
   );
   if (fishingWithVendor) return fishingWithVendor;
-
-  // Priority 2: first fishing day
   const firstFishing = days.find(d => d.type === "fishing");
   if (firstFishing) return firstFishing;
-
-  // Priority 3: most keyPlaces
   return [...days].sort((a, b) => b.keyPlaces.length - a.keyPlaces.length)[0];
 }
 
-/**
- * Select the footer day:
- * - Fishing day from the second fishing block (if exists)
- * - Otherwise last day
- */
 function selectFooterDay(days: ParsedDayInput[]): ParsedDayInput {
-  // Find fishing blocks (consecutive fishing days)
   const fishingDays = days.filter(d => d.type === "fishing");
-
   if (fishingDays.length >= 2) {
-    // Find the start of a second fishing block
     let blockCount = 0;
     let prevWasFishing = false;
-
     for (const day of days) {
       const isFishing = day.type === "fishing";
       if (isFishing && !prevWasFishing) blockCount++;
@@ -72,17 +111,11 @@ function selectFooterDay(days: ParsedDayInput[]): ParsedDayInput {
       prevWasFishing = isFishing;
     }
   }
-
-  // Fallback: last day
   return days[days.length - 1];
 }
 
-/**
- * Determine the main fishing region — region of the first fishing day
- */
 function getMainFishingRegion(days: ParsedDayInput[]): string | null {
-  const fishingDay = days.find(d => d.type === "fishing");
-  return fishingDay?.regionName || null;
+  return days.find(d => d.type === "fishing")?.regionName || null;
 }
 
 /* ── Main function ── */
@@ -102,45 +135,42 @@ export async function getItineraryImages(days: ParsedDayInput[]): Promise<TripIm
   if (!days.length) return emptyResult;
 
   try {
-    // Collect all unique species
     const allSpecies = [...new Set(days.flatMap(d => d.species))];
-
-    // Identify key days
     const heroDay = selectHeroDay(days);
     const footerDay = selectFooterDay(days);
     const mainFishingRegion = getMainFishingRegion(days);
     const lastDay = days[days.length - 1];
 
-    // ── Fetch photos for hero day ──
+    // ── Cover ──
     const heroRegion = heroDay.regionName || heroDay.country;
-    const heroPhotos = heroRegion
-      ? await getPhotosForTrip(heroRegion, heroDay.country, heroDay.species, "fishing", 1)
-      : null;
-
-    const cover = heroPhotos?.cover
-      ? mapPhotoBankRow(heroPhotos.cover)
-      : (heroPhotos?.heroes?.[0] ? mapPhotoBankRow(heroPhotos.heroes[0]) : null);
+    let cover: TripImage | null = null;
+    if (heroRegion) {
+      try {
+        const heroPhotos = await getPhotosForTrip(heroRegion, heroDay.country, heroDay.species, "fishing", 1);
+        cover = heroPhotos?.cover ? mapPhotoBankRow(heroPhotos.cover) : null;
+      } catch { /* fallthrough to default */ }
+    }
+    cover = cover || makeDefault(DEFAULT_PHOTOS.cover[0]);
 
     // ── Footer ──
-    const footerRegion = footerDay.regionName || footerDay.country;
     let footer: TripImage | null = null;
+    const footerRegion = footerDay.regionName || footerDay.country;
     if (footerRegion && footerRegion !== heroRegion) {
-      const footerPhotos = await getPhotosForTrip(footerRegion, footerDay.country, footerDay.species, undefined, 1);
-      footer = footerPhotos?.cover ? mapPhotoBankRow(footerPhotos.cover) : null;
-    } else if (heroPhotos?.heroes?.[1]) {
-      footer = mapPhotoBankRow(heroPhotos.heroes[1]);
-    } else if (heroPhotos?.action?.[0]) {
-      footer = mapPhotoBankRow(heroPhotos.action[0]);
+      try {
+        const footerPhotos = await getPhotosForTrip(footerRegion, footerDay.country, footerDay.species, undefined, 1);
+        footer = footerPhotos?.cover ? mapPhotoBankRow(footerPhotos.cover) : null;
+      } catch { /* fallthrough */ }
     }
+    footer = footer || makeDefault(DEFAULT_PHOTOS.footer[0]);
 
-    // ── Day photos (scenery per day, fetched per unique region) ──
+    // ── Day photos — per day, per region, with type-based default fallback ──
     const regionCache = new Map<string, Awaited<ReturnType<typeof getPhotosForTrip>>>();
     const dayPhotos: (TripImage | null)[] = [];
 
     for (const day of days) {
       const region = day.regionName || day.country;
       if (!region) {
-        dayPhotos.push(null);
+        dayPhotos.push(defaultDayPhoto(day.type));
         continue;
       }
 
@@ -149,70 +179,73 @@ export async function getItineraryImages(days: ParsedDayInput[]): Promise<TripIm
           const photos = await getPhotosForTrip(region, day.country, day.species, undefined, days.length);
           regionCache.set(region, photos);
         } catch {
-          dayPhotos.push(null);
+          dayPhotos.push(defaultDayPhoto(day.type));
           continue;
         }
       }
 
       const cached = regionCache.get(region)!;
-      // Pick next unused scenery photo
-      const usedCount = dayPhotos.filter(p => p !== null).length;
-      const sceneryPhoto = cached.scenery[usedCount % cached.scenery.length];
-      dayPhotos.push(sceneryPhoto ? mapPhotoBankRow(sceneryPhoto) : null);
+      const usedCount = dayPhotos.filter(Boolean).length;
+      const sceneryPhoto = cached.scenery[usedCount % Math.max(cached.scenery.length, 1)];
+      dayPhotos.push(sceneryPhoto ? mapPhotoBankRow(sceneryPhoto) : defaultDayPhoto(day.type));
     }
 
-    // ── Bands — first 3 from collected day photos ──
+    // ── Bands ──
     const nonNullDayPhotos = dayPhotos.filter(Boolean) as TripImage[];
     const bands: (TripImage | null)[] = [
-      nonNullDayPhotos[0] || null,
-      nonNullDayPhotos[1] || null,
-      nonNullDayPhotos[2] || null,
+      nonNullDayPhotos[0] || makeDefault(DEFAULT_PHOTOS.cover[1]),
+      nonNullDayPhotos[1] || makeDefault(DEFAULT_PHOTOS.cover[2]),
+      nonNullDayPhotos[2] || makeDefault(DEFAULT_PHOTOS.footer[1]),
     ];
 
-    // ── Fish photos — by target species ──
+    // ── Fish photos ──
     const fishPhotos: TripImage[] = [];
     if (allSpecies.length > 0 && mainFishingRegion) {
-      const fishData = await getPhotosForTrip(mainFishingRegion, days[0]?.country, allSpecies, undefined, 1);
-      for (const fp of fishData.fish) {
-        fishPhotos.push(mapPhotoBankRow(fp));
-      }
+      try {
+        const fishData = await getPhotosForTrip(mainFishingRegion, days[0]?.country, allSpecies, undefined, 1);
+        for (const fp of fishData.fish) fishPhotos.push(mapPhotoBankRow(fp));
+      } catch { /* fallthrough */ }
     }
+    if (fishPhotos.length === 0) fishPhotos.push(makeDefault(DEFAULT_PHOTOS.fish));
 
-    // ── Action band — action photo from main fishing region ──
+    // ── Action band ──
     let actionBand: TripImage | null = null;
     if (mainFishingRegion) {
-      const actionData = heroPhotos || await getPhotosForTrip(mainFishingRegion, days[0]?.country, undefined, "fishing", 1);
-      actionBand = actionData?.action?.[0] ? mapPhotoBankRow(actionData.action[0]) : null;
+      try {
+        const actionData = await getPhotosForTrip(mainFishingRegion, days[0]?.country, undefined, "fishing", 1);
+        actionBand = actionData?.action?.[0] ? mapPhotoBankRow(actionData.action[0]) : null;
+      } catch { /* fallthrough */ }
     }
+    actionBand = actionBand || makeDefault(DEFAULT_PHOTOS.actionBand);
 
-    // ── Gear band — band photo from main fishing region ──
+    // ── Gear band ──
     let gearBand: TripImage | null = null;
     if (mainFishingRegion) {
-      const gearData = heroPhotos || await getPhotosForTrip(mainFishingRegion, days[0]?.country, undefined, undefined, 1);
-      gearBand = gearData?.bands?.[0] ? mapPhotoBankRow(gearData.bands[0]) : null;
+      try {
+        const gearData = await getPhotosForTrip(mainFishingRegion, days[0]?.country, undefined, undefined, 1);
+        gearBand = gearData?.bands?.[0] ? mapPhotoBankRow(gearData.bands[0]) : null;
+      } catch { /* fallthrough */ }
     }
+    gearBand = gearBand || makeDefault(DEFAULT_PHOTOS.gearBand);
 
-    // ── Season band — scenery from last day ──
+    // ── Season band ──
     let seasonBand: TripImage | null = null;
     const lastRegion = lastDay.regionName || lastDay.country;
     if (lastRegion) {
-      const lastData = regionCache.get(lastRegion)
-        || await getPhotosForTrip(lastRegion, lastDay.country, undefined, undefined, 1);
-      const lastScenery = lastData.scenery[lastData.scenery.length - 1];
-      seasonBand = lastScenery ? mapPhotoBankRow(lastScenery) : null;
+      try {
+        const lastData = regionCache.get(lastRegion)
+          || await getPhotosForTrip(lastRegion, lastDay.country, undefined, undefined, 1);
+        const lastScenery = lastData.scenery[lastData.scenery.length - 1];
+        seasonBand = lastScenery ? mapPhotoBankRow(lastScenery) : null;
+      } catch { /* fallthrough */ }
     }
+    seasonBand = seasonBand || makeDefault(DEFAULT_PHOTOS.seasonBand);
 
+    const fromBank = dayPhotos.filter(p => p?.source === "photo_bank").length;
+    const fromDefault = dayPhotos.filter(p => p?.source === "photo_bank" && p?.photoId === undefined).length;
     log.info(
-      {
-        hasCover: !!cover,
-        hasFooter: !!footer,
-        dayPhotos: dayPhotos.filter(Boolean).length,
-        fishPhotos: fishPhotos.length,
-        hasAction: !!actionBand,
-        hasGear: !!gearBand,
-        hasSeason: !!seasonBand,
-      },
-      "[ItineraryImage] Photo set assembled from Photo Bank",
+      { hasCover: !!cover, hasFooter: !!footer, dayPhotos: dayPhotos.length, fromBank, fromDefault },
+      "[ItineraryImage] Photo set assembled",
     );
 
     return { cover, bands, dayPhotos, fishPhotos, footer, actionBand, gearBand, seasonBand };
