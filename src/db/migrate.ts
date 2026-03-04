@@ -205,6 +205,11 @@ ALTER TABLE trip_vendor_inquiries ADD COLUMN IF NOT EXISTS resend_inbound_email_
 -- Trip images (Pexels)
 ALTER TABLE trip_projects ADD COLUMN IF NOT EXISTS images JSONB DEFAULT '{}';
 
+-- v1.8.0: Group Chat
+ALTER TABLE trip_projects ADD COLUMN IF NOT EXISTS chat_platform VARCHAR(20);
+ALTER TABLE trip_projects ADD COLUMN IF NOT EXISTS chat_link TEXT;
+ALTER TABLE trip_projects ADD COLUMN IF NOT EXISTS telegram_group_id BIGINT;
+
 -- v1.7.0: Photo Bank
 CREATE TABLE IF NOT EXISTS photo_bank (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

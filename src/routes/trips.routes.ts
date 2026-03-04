@@ -736,3 +736,28 @@ tripsRouter.post("/update-chat", asyncHandler(async (req: Request, res: Response
     res.status(500).json({ error: "Internal server error" });
   }
 }));
+
+// Bot endpoint — called by rng-ai-service when bot is added to a Telegram group
+tripsRouter.post("/bot-update-chat", asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const { slug, telegramGroupId, chatLink } = req.body;
+    if (!slug || !telegramGroupId) {
+      return res.status(400).json({ error: "slug and telegramGroupId required" });
+    }
+
+    const project = await tripsService.getBySlug(slug);
+    if (!project) return res.status(404).json({ error: "Trip not found" });
+
+    const updated = await tripsService.updateChat(project.id, {
+      chat_platform: "telegram",
+      chat_link: chatLink || null,
+      telegram_group_id: telegramGroupId,
+    });
+
+    log.info({ slug, telegramGroupId }, "trip.bot_chat_updated");
+    res.json({ ok: true, project: updated });
+  } catch (e: any) {
+    log.error({ err: e }, "[Trips] Bot update chat");
+    res.status(500).json({ error: "Internal server error" });
+  }
+}));

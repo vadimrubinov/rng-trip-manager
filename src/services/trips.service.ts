@@ -27,7 +27,7 @@ export interface TripProjectRow {
   images?: any;
   chat_platform?: string;
   chat_link?: string;
-  telegram_group_id?: string;
+  telegram_group_id?: number;
   created_at: string;
   updated_at: string;
 }
@@ -181,5 +181,9 @@ export const tripsService = {
       `UPDATE trip_projects SET ${sets.join(", ")} WHERE id = $1 RETURNING *`,
       params
     );
+  },
+
+  async getByTelegramGroupId(groupId: number): Promise<TripProjectRow | null> {
+    return queryOne(`SELECT * FROM trip_projects WHERE telegram_group_id = $1`, [groupId]);
   },
 };
