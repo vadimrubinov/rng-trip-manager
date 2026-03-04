@@ -452,6 +452,7 @@ function renderCollectProgress(result) {
     vendors_scanned: result.vendors_scanned || 0,
     images_found: result.images_found || 0,
     ai_rejected: result.ai_rejected || 0,
+    too_small: result.too_small || 0,
     ai_passed: result.ai_passed || 0,
     uploaded: result.uploaded || 0,
     errors: result.errors || 0,

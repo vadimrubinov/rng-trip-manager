@@ -76,6 +76,7 @@ export interface CollectResult {
   ai_passed: number;
   uploaded: number;
   duplicates_skipped: number;
+  too_small: number;
   errors: number;
   progress: Record<string, CategoryProgress>;
   stopped_reason: "all_targets_met" | "sources_exhausted" | null;
@@ -151,7 +152,7 @@ function emptyResult(source: string, region: string): CollectResult {
     source, region,
     vendors_scanned: 0, images_found: 0,
     ai_rejected: 0, ai_passed: 0, uploaded: 0,
-    duplicates_skipped: 0, errors: 0,
+    duplicates_skipped: 0, too_small: 0, errors: 0,
     progress: {},
     stopped_reason: null,
     scores: { "1-3": 0, "4-6": 0, "7-10": 0 },
@@ -448,11 +449,11 @@ interface CategorySpec {
 }
 
 const CATEGORY_RATIOS: Record<string, CategorySpec> = {
-  hero:    { w: 16, h: 9,  landscape: true,  minW: 1920, minH: 1080 },
-  band:    { w: 21, h: 9,  landscape: true,  minW: 1920, minH: 823  },
-  action:  { w: 4,  h: 3,  landscape: true,  minW: 800,  minH: 600  },
-  scenery: { w: 3,  h: 2,  landscape: true,  minW: 1200, minH: 800  },
-  fish:    { w: 3,  h: 4,  landscape: false, minW: 800,  minH: 1067 },
+  hero:    { w: 16, h: 9,  landscape: true,  minW: 1200, minH: 675  },
+  band:    { w: 21, h: 9,  landscape: true,  minW: 1200, minH: 514  },
+  action:  { w: 4,  h: 3,  landscape: true,  minW: 600,  minH: 450  },
+  scenery: { w: 3,  h: 2,  landscape: true,  minW: 900,  minH: 600  },
+  fish:    { w: 3,  h: 4,  landscape: false, minW: 600,  minH: 800  },
 };
 
 /** Check if image is landscape orientation */
@@ -642,9 +643,8 @@ async function processCandidates(
         finalHeight = cropped.height;
       } catch (err: any) {
         if (err.message === "too_small") {
-          // Image too small for this category after crop — skip entirely
           log.debug({ url: c.url, category: finalCategory, w: imgW, h: imgH }, "photo_bank.crop.too_small");
-          result.ai_rejected++;
+          result.too_small++;
           return;
         }
         // Other crop errors — upload original as fallback
