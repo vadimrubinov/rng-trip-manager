@@ -3,6 +3,7 @@ import { pool } from "../db/pool";
 import { addCandidateFromBuffer, downloadImage, PhotoCategory, PhotoSource } from "./photo-bank.service";
 import { log } from "../lib/pino-logger";
 import { withRetry } from "../lib/retry";
+import sharp from "sharp";
 
 // ── Types ──────────────────────────────────────────────
 
@@ -310,7 +311,7 @@ Score 1-10:
 - 7-10: Great for landing page (epic landscapes, fishing action shots, beautiful water/sunset scenes, trophy fish catches, boats on water)
 
 Category (pick one):
-- hero: Epic fishing moment — angler fighting a fish, rod bent, splash, trophy catch. Action-packed, suitable for fullscreen cover.
+- hero: Epic LANDSCAPE fishing moment — wide angle, dramatic lighting, angler fighting a fish, rod bent, splash. Must be horizontal/wide. Suitable for fullscreen 16:9 banner cover. NEVER assign hero to vertical/portrait photos.
 - action: Fishing in progress (rod bending, fish jumping, fighting fish, casting)
 - scenery: Beautiful nature/water/coast without fishing action
 - fish: Clear photo of a fish species (caught or in water)
@@ -318,6 +319,11 @@ Category (pick one):
 - reject: Not suitable for fishing trip content
 
 Description: Write a short description of the image content (10-15 words, English).
+
+Important orientation rules:
+- hero and band MUST be horizontal/landscape photos (width > height). Never assign these to vertical photos.
+- fish category is for vertical/portrait photos of fish species.
+- If a great fishing photo is vertical, assign it to "action" not "hero".
 
 Respond ONLY in JSON: {"score": N, "category": "...", "description": "..."}`;
 
@@ -384,6 +390,78 @@ interface RawCandidate {
 }
 
 const VALID_AI_CATEGORIES: PhotoCategory[] = ["hero", "action", "scenery", "fish", "band"];
+
+// ── Target aspect ratios per category ──────────────────
+
+const CATEGORY_RATIOS: Record<string, { w: number; h: number; landscape: boolean }> = {
+  hero:    { w: 16, h: 9,  landscape: true },
+  band:    { w: 21, h: 9,  landscape: true },
+  action:  { w: 4,  h: 3,  landscape: true },
+  scenery: { w: 16, h: 9,  landscape: true },
+  fish:    { w: 3,  h: 4,  landscape: false },
+};
+
+/** Check if image is landscape orientation */
+function isLandscape(width: number, height: number): boolean {
+  return width > height;
+}
+
+/** Reassign category if orientation doesn't match requirement */
+function fixCategoryByOrientation(category: PhotoCategory, width: number, height: number): PhotoCategory {
+  const spec = CATEGORY_RATIOS[category];
+  if (!spec) return category;
+
+  const landscape = isLandscape(width, height);
+
+  if (spec.landscape && !landscape) {
+    // Vertical photo can't be hero/band/action/scenery
+    if (category === "hero" || category === "band") return "action";
+    if (category === "scenery") return "action";
+    // action stays action even if vertical (will be cropped)
+    return category;
+  }
+
+  if (!spec.landscape && landscape) {
+    // Horizontal photo assigned to fish — keep it, crop will handle
+    return category;
+  }
+
+  return category;
+}
+
+/** Center-crop buffer to target aspect ratio */
+async function smartCrop(buffer: Buffer, category: string): Promise<{ buffer: Buffer; width: number; height: number; contentType: string }> {
+  const spec = CATEGORY_RATIOS[category] || CATEGORY_RATIOS.scenery;
+  const targetRatio = spec.w / spec.h;
+
+  const metadata = await sharp(buffer).metadata();
+  const srcW = metadata.width || 800;
+  const srcH = metadata.height || 600;
+  const srcRatio = srcW / srcH;
+
+  let cropW = srcW;
+  let cropH = srcH;
+
+  if (srcRatio > targetRatio) {
+    // Source is wider — crop sides
+    cropW = Math.round(srcH * targetRatio);
+  } else if (srcRatio < targetRatio) {
+    // Source is taller — crop top/bottom
+    cropH = Math.round(srcW / targetRatio);
+  }
+
+  const left = Math.round((srcW - cropW) / 2);
+  const top = Math.round((srcH - cropH) / 2);
+
+  // Extract region (center crop) + convert to jpeg for consistency
+  const cropped = await sharp(buffer)
+    .extract({ left, top, width: cropW, height: cropH })
+    .jpeg({ quality: 85 })
+    .toBuffer();
+
+  return { buffer: cropped, width: cropW, height: cropH, contentType: "image/jpeg" };
+}
+
 
 async function processCandidates(
   candidates: RawCandidate[],
@@ -458,25 +536,58 @@ async function processCandidates(
         return;
       }
 
+      // 8. Get dimensions + fix orientation
+      let metadata: { width?: number; height?: number };
+      try {
+        metadata = await sharp(buffer).metadata();
+      } catch {
+        metadata = { width: 800, height: 600 };
+      }
+      const imgW = metadata.width || 800;
+      const imgH = metadata.height || 600;
+
+      const finalCategory = fixCategoryByOrientation(category, imgW, imgH);
+
+      // Re-check target after category reassignment
+      if (!tracker.needsMore(finalCategory)) {
+        return;
+      }
+
       result.ai_passed++;
 
-      // 8. Upload
+      // 9. Smart crop to target aspect ratio
+      let finalBuffer = buffer;
+      let finalContentType = contentType;
+      let finalWidth = imgW;
+      let finalHeight = imgH;
+      try {
+        const cropped = await smartCrop(buffer, finalCategory);
+        finalBuffer = cropped.buffer;
+        finalContentType = cropped.contentType;
+        finalWidth = cropped.width;
+        finalHeight = cropped.height;
+      } catch (err: any) {
+        log.warn({ err: err.message, url: c.url }, "photo_bank.crop.error");
+        // Upload original if crop fails
+      }
+
+      // 10. Upload
       await addCandidateFromBuffer({
         source_url: c.url,
         region: c.region || undefined,
         country: c.country || undefined,
-        category,
+        category: finalCategory,
         species: species || undefined,
         source: c.source,
         vendor_record_id: c.vendor_record_id || undefined,
         ai_score: aiResult.score,
         ai_category: aiResult.category,
         ai_description: aiResult.description,
-        buffer,
-        contentType,
+        buffer: finalBuffer,
+        contentType: finalContentType,
       });
 
-      tracker.record(category);
+      tracker.record(finalCategory);
       result.uploaded++;
     } catch (err: any) {
       result.errors++;
