@@ -7,6 +7,7 @@ import { locationsService } from "../services/locations.service";
 import { participantsService } from "../services/participants.service";
 import { eventsService } from "../services/events.service";
 import { plannerService } from "../services/planner.service";
+import { itineraryPlannerService } from "../services/itinerary-planner.service";
 import { emailService } from "../services/email/email.service";
 import { nudgeService } from "../services/nudge/nudge.service";
 import { enqueueEnrichment } from "../services/enrichment.service";
@@ -63,7 +64,9 @@ tripsRouter.post("/generate-and-create", asyncHandler(async (req: Request, res: 
     }
 
     // 1. Generate plan
-    const plan = await plannerService.generatePlan({ scoutId, tripDetails: effectiveTripDetails, rawItinerary });
+    const plan = rawItinerary
+      ? await itineraryPlannerService.generatePlan({ rawItinerary })
+      : await plannerService.generatePlan({ scoutId, tripDetails: effectiveTripDetails });
 
     // 2. Create project
     const project = await tripsService.create(userId, {
@@ -142,7 +145,9 @@ tripsRouter.post("/generate-plan", asyncHandler(async (req: Request, res: Respon
       return res.status(400).json({ error: "scoutId, tripDetails/brief, or rawItinerary required" });
     }
 
-    const plan = await plannerService.generatePlan({ scoutId, tripDetails: effectiveTripDetails, rawItinerary });
+    const plan = rawItinerary
+      ? await itineraryPlannerService.generatePlan({ rawItinerary })
+      : await plannerService.generatePlan({ scoutId, tripDetails: effectiveTripDetails });
     res.json(plan);
   } catch (e: any) {
     log.error({ err: e }, "[Trips] GeneratePlan");
