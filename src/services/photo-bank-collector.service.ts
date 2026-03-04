@@ -349,28 +349,39 @@ async function runWithConcurrency<T>(
 
 // ── AI Vision filter ───────────────────────────────────
 
-const AI_VISION_PROMPT = `You are a photo curator for a trophy fishing trip booking platform.
-Evaluate this image for use on a fishing trip landing page.
+const AI_VISION_PROMPT = `You are a strict photo curator for a premium trophy fishing trip booking platform.
+Evaluate this image for use on a fishing trip landing page. Be CRITICAL — only truly good photos score 7+.
 
-Score 1-10:
-- 1-3: Not suitable (food/sushi, dead fish on counter, screenshots, infographics, blurry, interiors, stock placeholders, logos, people selfies, unrelated content)
-- 4-6: Acceptable but not great (generic nature, low quality fishing photos, distant boats)
-- 7-10: Great for landing page (epic landscapes, fishing action shots, beautiful water/sunset scenes, trophy fish catches, boats on water)
+SCORING RULES (1-10):
+- 1-3: Reject — food/sushi, dead fish on counter, screenshots, infographics, blurry/out-of-focus, dark interiors, logos, stock placeholders, unrelated content
+- 4-6: Below average — generic nature with no fishing context, very distant subjects, technically poor photos, underwater shots with murky/unclear water
+- 7-8: Good — clear fishing subject, decent composition, adequate lighting
+- 9-10: Excellent — professional quality, dramatic lighting, compelling composition, emotionally engaging
 
-Category (pick one):
-- hero: Epic LANDSCAPE fishing moment — wide angle, dramatic lighting, angler fighting a fish, rod bent, splash. Must be horizontal/wide. Suitable for fullscreen 16:9 banner cover. NEVER assign hero to vertical/portrait photos.
-- action: Fishing in progress (rod bending, fish jumping, fighting fish, casting)
-- scenery: Beautiful nature/water/coast without fishing action
-- fish: Clear photo of a fish species (caught or in water)
-- band: Good for section divider (wide scenic shot, boat, equipment, preparation)
-- reject: Not suitable for fishing trip content
+AUTOMATIC SCORE PENALTIES (apply before final score):
+- Subject occupies less than 20% of the frame (mostly sky, water, or empty space): -3
+- Underwater shot with murky, greenish, or unclear water: -3
+- Selfie angle (camera pointing down at person holding fish): -2
+- Overexposed sky (blown-out white sky >40% of frame): -2
+- Backlit subject (subject in shadow, bright background): -2
+- Multiple heavy penalties can reduce score below 1 → assign score 2, category reject
+
+CATEGORY RULES (pick one):
+- hero: Wide horizontal landscape with dramatic fishing moment — angler fighting fish, rod bent, big splash, epic scenery. MUST be landscape orientation. NEVER assign to vertical photos. Subject must be clearly visible.
+- action: Active fishing scene — rod bending, fish jumping, casting, netting. Can be horizontal or vertical BUT subject must fill at least 30% of frame.
+- scenery: Beautiful nature/water/coastline without active fishing. Must have good lighting and composition.
+- fish: Photo focused on a fish — caught fish being held, fish in water, close-up of species. Use for BOTH vertical AND horizontal fish photos. Also use for angler selfies holding a catch (even if low score).
+- band: Wide horizontal shot suitable for section divider — boat, equipment, dock, preparation scene.
+- reject: Blurry, dark, unrelated, food, interiors, logos, or any photo not suitable for a fishing trip landing page.
+
+CATEGORY PRIORITY RULES:
+- Person holding fish (any angle, including selfie) → fish category (not action)
+- Vertical photo of fish or angler with fish → fish category (not action)
+- Underwater photo with clear subject and clean water → action or fish
+- Underwater photo with murky/unclear water → reject or score ≤4
+- Mostly sky or water with tiny distant subject → scenery (score ≤5) or reject
 
 Description: Write a short description of the image content (10-15 words, English).
-
-Important orientation rules:
-- hero and band MUST be horizontal/landscape photos (width > height). Never assign these to vertical photos.
-- fish category is for vertical/portrait photos of fish species.
-- If a great fishing photo is vertical, assign it to "action" not "hero".
 
 Respond ONLY in JSON: {"score": N, "category": "...", "description": "..."}`;
 
