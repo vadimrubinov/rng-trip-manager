@@ -568,10 +568,22 @@ async function processCandidates(
         return;
       }
 
-      // 3. Size filter
+      // 3. Size filter (bytes)
       if (buffer.length < 50_000) {
         result.ai_rejected++;
         result.scores["1-3"]++;
+        return;
+      }
+
+      // 3b. Pixel dimensions pre-filter (before AI — free)
+      // Reject if smaller than the softest category minimum (action: 800×600)
+      // min dimension = 600px — anything smaller can't fit any category after crop
+      const preDims = readImageDimensions(buffer);
+      const minCategoryDim = Math.min(
+        ...Object.values(CATEGORY_RATIOS).map(s => Math.min(s.minW, s.minH))
+      );
+      if (preDims.width < minCategoryDim || preDims.height < minCategoryDim) {
+        result.ai_rejected++;
         return;
       }
 
