@@ -18,7 +18,13 @@ export interface TripImage {
 
 export interface TripImages {
   cover: TripImage | null;
-  bands: (TripImage | null)[];
+  bands: (TripImage | null)[];       // backward compat (old landing uses this)
+  dayPhotos: (TripImage | null)[];   // scenery — one per itinerary day
+  fishPhotos: (TripImage | null)[];  // fish — target species
+  footer: TripImage | null;          // hero — final CTA photo (different from cover)
+  actionBand: TripImage | null;      // action — band after overview
+  gearBand: TripImage | null;        // band — boat/gear before gear section
+  seasonBand: TripImage | null;      // scenery — band before season section
 }
 
 export interface TripProjectRow {

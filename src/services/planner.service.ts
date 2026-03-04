@@ -194,6 +194,7 @@ export const plannerService = {
       finalMeta.targetSpecies,
       finalMeta.tripType,
       finalMeta.country,
+      finalItinerary.length,
     );
 
     // ── Format output ──

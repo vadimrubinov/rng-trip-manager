@@ -322,8 +322,10 @@ export async function getPhotosForTrip(
   country?: string,
   targetSpecies?: string[],
   tripType?: string,
+  dayCount?: number,
 ): Promise<{
   cover: PhotoBankRow | null;
+  heroes: PhotoBankRow[];
   bands: PhotoBankRow[];
   action: PhotoBankRow[];
   scenery: PhotoBankRow[];
@@ -386,11 +388,13 @@ export async function getPhotosForTrip(
     return rows;
   }
 
+  const sceneryLimit = Math.max(dayCount || 3, 5) + 1; // days + seasonBand
+
   const [heroes, bands, actions, sceneries] = await Promise.all([
-    findByCategory("hero", 1),
-    findByCategory("band", 3),
+    findByCategory("hero", 2),
+    findByCategory("band", 1),
     findByCategory("action", 3),
-    findByCategory("scenery", 3),
+    findByCategory("scenery", sceneryLimit),
   ]);
 
   // Fish — try each target species
@@ -407,6 +411,7 @@ export async function getPhotosForTrip(
 
   return {
     cover: heroes[0] || null,
+    heroes,
     bands,
     action: actions,
     scenery: sceneries,

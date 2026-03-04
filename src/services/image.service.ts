@@ -171,8 +171,18 @@ export async function getTripImages(
   targetSpecies?: string[],
   tripType?: string,
   country?: string,
+  dayCount?: number,
 ): Promise<TripImages> {
-  const emptyResult: TripImages = { cover: null, bands: [null, null, null] };
+  const emptyResult: TripImages = {
+    cover: null,
+    bands: [null, null, null],
+    dayPhotos: [],
+    fishPhotos: [],
+    footer: null,
+    actionBand: null,
+    gearBand: null,
+    seasonBand: null,
+  };
 
   try {
     // ── 1. Try Photo Bank first ──────────────────────────
@@ -183,60 +193,63 @@ export async function getTripImages(
           country,
           targetSpecies,
           tripType,
+          dayCount,
         );
 
         const cover = bankPhotos.cover;
-        // Use bands from bank, fall back to action/scenery to fill slots
-        const bandCandidates = [
-          ...bankPhotos.bands,
-          ...bankPhotos.action,
-          ...bankPhotos.scenery,
-        ].filter(Boolean) as PhotoBankRow[];
 
         const hasCover = !!cover;
-        const hasBands = bandCandidates.length >= 3;
+        const hasEnoughPhotos = bankPhotos.action.length + bankPhotos.scenery.length + bankPhotos.bands.length >= 2;
 
-        if (hasCover && hasBands) {
-          log.info(
-            { region, country, tripType, source: "photo_bank" },
-            "[ImageService] Serving from Photo Bank",
+        if (hasCover || hasEnoughPhotos) {
+          // ── Build expanded photo set from bank ──
+          const coverImage = cover ? mapPhotoBankRow(cover, "large2x") : null;
+
+          // Footer — second hero different from cover, or fallback to action/scenery
+          const footerRow = bankPhotos.heroes.find(h => h.id !== cover?.id)
+            || bankPhotos.action[1]
+            || bankPhotos.scenery[bankPhotos.scenery.length - 1]
+            || null;
+          const footer = footerRow ? mapPhotoBankRow(footerRow, "large2x") : null;
+
+          // Action band — first action photo
+          const actionBand = bankPhotos.action[0] ? mapPhotoBankRow(bankPhotos.action[0], "large") : null;
+
+          // Gear band — first band photo
+          const gearBand = bankPhotos.bands[0] ? mapPhotoBankRow(bankPhotos.bands[0], "large") : null;
+
+          // Day photos — scenery, one per day
+          const dc = dayCount || 0;
+          const sceneryForDays = bankPhotos.scenery.slice(0, dc);
+          const dayPhotos: (TripImage | null)[] = Array.from({ length: dc }, (_, i) =>
+            sceneryForDays[i] ? mapPhotoBankRow(sceneryForDays[i], "large") : null
           );
-          return {
-            cover: mapPhotoBankRow(cover, "large2x"),
-            bands: [
-              mapPhotoBankRow(bandCandidates[0], "large"),
-              mapPhotoBankRow(bandCandidates[1], "large"),
-              mapPhotoBankRow(bandCandidates[2], "large"),
-            ],
-          };
-        }
 
-        // Partial bank result — use what we have, fill rest from Pexels
-        if (hasCover || bandCandidates.length > 0) {
+          // Season band — next scenery after day photos
+          const seasonRow = bankPhotos.scenery[sceneryForDays.length] || null;
+          const seasonBand = seasonRow ? mapPhotoBankRow(seasonRow, "large") : null;
+
+          // Fish photos
+          const fishPhotos = bankPhotos.fish.map(f => mapPhotoBankRow(f, "large"));
+
+          // Bands for backward compatibility
+          const bandCandidates = [
+            ...bankPhotos.action,
+            ...bankPhotos.scenery,
+            ...bankPhotos.bands,
+          ].filter(Boolean) as PhotoBankRow[];
+          const bands: (TripImage | null)[] = [
+            bandCandidates[0] ? mapPhotoBankRow(bandCandidates[0], "large") : null,
+            bandCandidates[1] ? mapPhotoBankRow(bandCandidates[1], "large") : null,
+            bandCandidates[2] ? mapPhotoBankRow(bandCandidates[2], "large") : null,
+          ];
+
           log.info(
-            { region, country, tripType, bankCover: hasCover, bankBands: bandCandidates.length, source: "photo_bank+pexels_fallback" },
-            "[ImageService] Partial Photo Bank — filling with Pexels",
+            { region, country, tripType, source: "photo_bank", dayPhotos: dayPhotos.filter(Boolean).length, fish: fishPhotos.length },
+            "[ImageService] Serving expanded set from Photo Bank",
           );
 
-          const needed = 4 - (hasCover ? 1 : 0) - Math.min(bandCandidates.length, 3);
-          const pexelsPhotos = needed > 0
-            ? await getPexelsFallback(region, targetSpecies, tripType, country, needed + 2)
-            : [];
-
-          const coverImage = hasCover
-            ? mapPhotoBankRow(cover, "large2x")
-            : (pexelsPhotos[0] ? mapPexelsPhoto(pexelsPhotos.shift()!, "large2x") : null);
-
-          const bands: (TripImage | null)[] = [null, null, null];
-          for (let i = 0; i < 3; i++) {
-            if (bandCandidates[i]) {
-              bands[i] = mapPhotoBankRow(bandCandidates[i], "large");
-            } else if (pexelsPhotos.length > 0) {
-              bands[i] = mapPexelsPhoto(pexelsPhotos.shift()!, "large");
-            }
-          }
-
-          return { cover: coverImage, bands };
+          return { cover: coverImage, bands, dayPhotos, fishPhotos, footer, actionBand, gearBand, seasonBand };
         }
       } catch (bankErr) {
         log.warn({ bankErr }, "[ImageService] Photo Bank query failed, falling back to Pexels");
@@ -260,6 +273,12 @@ export async function getTripImages(
         pexelsPhotos[2] ? mapPexelsPhoto(pexelsPhotos[2], "large") : null,
         pexelsPhotos[3] ? mapPexelsPhoto(pexelsPhotos[3], "large") : null,
       ],
+      dayPhotos: [],
+      fishPhotos: [],
+      footer: null,
+      actionBand: null,
+      gearBand: null,
+      seasonBand: null,
     };
   } catch (err) {
     log.error({ err }, "[ImageService] Failed to fetch images");
