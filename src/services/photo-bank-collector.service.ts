@@ -3,18 +3,67 @@ import { pool } from "../db/pool";
 import { addCandidateFromBuffer, downloadImage, PhotoCategory, PhotoSource } from "./photo-bank.service";
 import { log } from "../lib/pino-logger";
 import { withRetry } from "../lib/retry";
-// sharp loaded lazily — may not be available on all platforms
-let _sharp: any = null;
-function getSharp(): any {
-  if (_sharp === null) {
-    try {
-      _sharp = require("sharp");
-    } catch (err) {
-      log.warn("sharp not available, cropping disabled");
-      _sharp = false;
+// ── Image dimension reading (pure JS, no native deps) ──
+
+function readImageDimensions(buffer: Buffer): { width: number; height: number } {
+  // JPEG: look for SOF0/SOF2 markers
+  if (buffer[0] === 0xFF && buffer[1] === 0xD8) {
+    let offset = 2;
+    while (offset < buffer.length - 8) {
+      if (buffer[offset] !== 0xFF) break;
+      const marker = buffer[offset + 1];
+      // SOF0 or SOF2 (baseline/progressive JPEG)
+      if (marker === 0xC0 || marker === 0xC2) {
+        const height = buffer.readUInt16BE(offset + 5);
+        const width = buffer.readUInt16BE(offset + 7);
+        return { width, height };
+      }
+      const segLen = buffer.readUInt16BE(offset + 2);
+      offset += 2 + segLen;
     }
   }
-  return _sharp || null;
+  // PNG: IHDR at bytes 16-23
+  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) {
+    const width = buffer.readUInt32BE(16);
+    const height = buffer.readUInt32BE(20);
+    return { width, height };
+  }
+  // WebP: RIFF header, width/height at 26-29
+  if (buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46) {
+    if (buffer.length > 29 && buffer[12] === 0x56 && buffer[13] === 0x50 && buffer[14] === 0x38) {
+      // VP8
+      if (buffer[15] === 0x20) {
+        const width = buffer.readUInt16LE(26) & 0x3FFF;
+        const height = buffer.readUInt16LE(28) & 0x3FFF;
+        return { width, height };
+      }
+      // VP8L
+      if (buffer[15] === 0x4C && buffer.length > 25) {
+        const bits = buffer.readUInt32LE(21);
+        const width = (bits & 0x3FFF) + 1;
+        const height = ((bits >> 14) & 0x3FFF) + 1;
+        return { width, height };
+      }
+    }
+  }
+  return { width: 800, height: 600 }; // fallback
+}
+
+// Canvas-based crop using sharp (lazy loaded)
+let _sharp: any = null;
+let _sharpChecked = false;
+function getSharp(): any {
+  if (!_sharpChecked) {
+    _sharpChecked = true;
+    try {
+      _sharp = require("sharp");
+      log.info("sharp loaded successfully — cropping enabled");
+    } catch (err) {
+      log.warn("sharp not available — cropping disabled, photos uploaded as-is");
+      _sharp = null;
+    }
+  }
+  return _sharp;
 }
 
 // ── Types ──────────────────────────────────────────────
@@ -442,13 +491,14 @@ function fixCategoryByOrientation(category: PhotoCategory, width: number, height
 }
 
 /** Center-crop buffer to target aspect ratio */
-async function smartCrop(buffer: Buffer, category: string): Promise<{ buffer: Buffer; width: number; height: number; contentType: string }> {
+async function smartCrop(buffer: Buffer, category: string, srcW: number, srcH: number): Promise<{ buffer: Buffer; width: number; height: number; contentType: string }> {
+  const sharpLib = getSharp();
+  if (!sharpLib) {
+    return { buffer, width: srcW, height: srcH, contentType: "image/jpeg" };
+  }
   const spec = CATEGORY_RATIOS[category] || CATEGORY_RATIOS.scenery;
   const targetRatio = spec.w / spec.h;
 
-  const metadata = await sharpLib(buffer).metadata();
-  const srcW = metadata.width || 800;
-  const srcH = metadata.height || 600;
   const srcRatio = srcW / srcH;
 
   let cropW = srcW;
@@ -549,19 +599,7 @@ async function processCandidates(
       }
 
       // 8. Get dimensions + fix orientation
-      let metadata: { width?: number; height?: number };
-      const sharpInst = getSharp();
-      if (sharpInst) {
-        try {
-          metadata = await sharpInst(buffer).metadata();
-        } catch {
-          metadata = { width: 800, height: 600 };
-        }
-      } else {
-        metadata = { width: 800, height: 600 };
-      }
-      const imgW = metadata.width || 800;
-      const imgH = metadata.height || 600;
+      const { width: imgW, height: imgH } = readImageDimensions(buffer);
 
       const finalCategory = fixCategoryByOrientation(category, imgW, imgH);
 
@@ -578,7 +616,7 @@ async function processCandidates(
       let finalWidth = imgW;
       let finalHeight = imgH;
       try {
-        const cropped = await smartCrop(buffer, finalCategory);
+        const cropped = await smartCrop(buffer, finalCategory, imgW, imgH);
         finalBuffer = cropped.buffer;
         finalContentType = cropped.contentType;
         finalWidth = cropped.width;
