@@ -413,12 +413,20 @@ function pollCollectStatus() {
   }, 2000);
 }
 
-function renderCollectProgress(results) {
-  const agg = { records_scanned: 0, images_found: 0, ai_rejected: 0, ai_passed: 0, uploaded: 0, errors: 0 };
+function renderCollectProgress(result) {
+  // result is a single CollectResult object (v3), not an array
+  const agg = {
+    vendors_scanned: result.vendors_scanned || 0,
+    images_found: result.images_found || 0,
+    ai_rejected: result.ai_rejected || 0,
+    ai_passed: result.ai_passed || 0,
+    uploaded: result.uploaded || 0,
+    errors: result.errors || 0,
+  };
+  // categories come from result.progress: Record<category, {collected, target, done}>
   const cats = {};
-  for (const r of results) {
-    for (const k of Object.keys(agg)) agg[k] += r[k] || 0;
-    for (const [c, n] of Object.entries(r.categories || {})) cats[c] = (cats[c] || 0) + n;
+  for (const [cat, prog] of Object.entries(result.progress || {})) {
+    cats[cat] = prog.collected || 0;
   }
   document.getElementById('collect-progress-data').innerHTML =
     Object.entries(agg).map(([k, v]) =>
