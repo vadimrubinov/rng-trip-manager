@@ -1,7 +1,7 @@
 import { log } from "../lib/pino-logger";
 import { ENV } from "../config/env";
 import { TripImage, TripImages } from "../types";
-import { getPhotosForTrip, PhotoBankRow } from "./photo-bank.service";
+import { getPhotosForTrip, PhotoBankRow } from "./photo-bank-readonly.service";
 
 const PEXELS_BASE = "https://api.pexels.com/v1";
 
