@@ -369,7 +369,8 @@ function populateRegionSelects() {
   ['collect-region','mod-region'].forEach(id => {
     const sel = document.getElementById(id);
     const cur = sel.value;
-    sel.innerHTML = '<option value="">Select region...</option>' +
+    const allLabel = id === 'mod-region' ? '<option value="">All regions</option>' : '<option value="">Select region...</option>';
+    sel.innerHTML = allLabel +
       regionList.map(r => '<option value="' + esc(r.name) + '"' + (r.name === cur ? ' selected' : '') + '>' + esc(r.label) + '</option>').join('');
   });
 }
@@ -496,8 +497,6 @@ async function loadCollectJobs() {
 // ── Moderation ──
 async function loadModeration() {
   const region = document.getElementById('mod-region').value;
-  if (!region) return;
-
   modOffset = 0;
   selectedPhotos.clear();
   updateBulkDeleteBtn();
@@ -597,7 +596,6 @@ async function approveOne(id) {
 }
 
 async function deleteOne(id, idx) {
-  if (!confirm('Delete this photo?')) return;
   await api('POST', '/reject', { id });
   moderationPhotos.splice(idx, 1);
   modTotal--;
@@ -685,7 +683,6 @@ async function lbApprove() {
 async function lbDelete() {
   const p = moderationPhotos[lbIndex];
   if (!p) return;
-  if (!confirm('Delete this photo?')) return;
   await api('POST', '/reject', { id: p.id });
   moderationPhotos.splice(lbIndex, 1);
   renderModGrid();
@@ -714,9 +711,11 @@ window.addEventListener('popstate', function(e) {
 });
 document.addEventListener('keydown', e => {
   if (!document.getElementById('lightbox').classList.contains('show')) return;
-  if (e.key === 'Escape') closeLightbox();
-  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') lbNav(1);
-  if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') lbNav(-1);
+  if (e.key === 'Escape') { closeLightbox(); return; }
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { lbNav(1); return; }
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { lbNav(-1); return; }
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); lbApprove(); return; }
+  if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); lbDelete(); return; }
 });
 
 // ── Helpers ──
