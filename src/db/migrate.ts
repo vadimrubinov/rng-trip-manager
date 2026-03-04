@@ -280,6 +280,11 @@ ALTER TABLE photo_bank ADD COLUMN IF NOT EXISTS ai_score INTEGER;
 ALTER TABLE photo_bank ADD COLUMN IF NOT EXISTS ai_category VARCHAR(30);
 ALTER TABLE photo_bank ADD COLUMN IF NOT EXISTS ai_description TEXT;
 ALTER TABLE photo_bank ADD COLUMN IF NOT EXISTS ai_filtered_at TIMESTAMPTZ;
+
+-- v1.8.0: group chat
+ALTER TABLE trip_projects ADD COLUMN IF NOT EXISTS chat_platform VARCHAR(20);
+ALTER TABLE trip_projects ADD COLUMN IF NOT EXISTS chat_link TEXT;
+ALTER TABLE trip_projects ADD COLUMN IF NOT EXISTS telegram_group_id BIGINT;
 `;
 
 const EXPECTED_TABLES = [

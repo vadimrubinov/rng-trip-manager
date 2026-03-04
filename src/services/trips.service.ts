@@ -25,6 +25,9 @@ export interface TripProjectRow {
   experience_level?: string;
   itinerary?: any;
   images?: any;
+  chat_platform?: string;
+  chat_link?: string;
+  telegram_group_id?: string;
   created_at: string;
   updated_at: string;
 }
@@ -146,5 +149,37 @@ export const tripsService = {
 
   async delete(id: string): Promise<void> {
     await pool.query(`DELETE FROM trip_projects WHERE id = $1`, [id]);
+  },
+
+  async updateChat(
+    projectId: string,
+    data: { chat_platform?: string; chat_link?: string; telegram_group_id?: number }
+  ): Promise<TripProjectRow | null> {
+    const sets: string[] = [];
+    const params: any[] = [projectId];
+    let i = 2;
+
+    if (data.chat_platform !== undefined) {
+      sets.push(`chat_platform = $${i}`);
+      params.push(data.chat_platform);
+      i++;
+    }
+    if (data.chat_link !== undefined) {
+      sets.push(`chat_link = $${i}`);
+      params.push(data.chat_link);
+      i++;
+    }
+    if (data.telegram_group_id !== undefined) {
+      sets.push(`telegram_group_id = $${i}`);
+      params.push(data.telegram_group_id);
+      i++;
+    }
+
+    if (sets.length === 0) return null;
+
+    return queryOne(
+      `UPDATE trip_projects SET ${sets.join(", ")} WHERE id = $1 RETURNING *`,
+      params
+    );
   },
 };

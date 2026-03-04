@@ -81,6 +81,8 @@ publicRouter.get("/:slug", asyncHandler(async (req: Request, res: Response) => {
         experience_level: project.experience_level,
         itinerary: project.itinerary,
         images: project.images,
+        chat_platform: project.chat_platform,
+        chat_link: project.chat_link,
         created_at: project.created_at,
       },
       tasks: publicTasks,

@@ -702,3 +702,37 @@ tripsRouter.post("/enrich-queue", asyncHandler(async (req: Request, res: Respons
     res.status(500).json({ error: "Internal server error" });
   }
 }));
+
+// ── Group Chat ──
+
+tripsRouter.post("/update-chat", asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return noAuth(res);
+
+    const { projectId, chatPlatform, chatLink, telegramGroupId } = req.body;
+    if (!projectId) return res.status(400).json({ error: "projectId required" });
+
+    // Verify ownership
+    const project = await tripsService.getById(projectId);
+    if (!project) return res.status(404).json({ error: "Trip not found" });
+    if (project.user_id !== userId) return res.status(403).json({ error: "Not authorized" });
+
+    // Validate platform
+    if (chatPlatform && !["whatsapp", "telegram"].includes(chatPlatform)) {
+      return res.status(400).json({ error: "Invalid platform" });
+    }
+
+    const updated = await tripsService.updateChat(projectId, {
+      chat_platform: chatPlatform || null,
+      chat_link: chatLink || null,
+      telegram_group_id: telegramGroupId || null,
+    });
+
+    log.info({ userId, projectId, chatPlatform }, "trip.chat_updated");
+    res.json({ ok: true, project: updated });
+  } catch (e: any) {
+    log.error({ err: e }, "[Trips] Update chat");
+    res.status(500).json({ error: "Internal server error" });
+  }
+}));
