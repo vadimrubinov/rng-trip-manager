@@ -609,7 +609,7 @@ async function collectOgImage(
   const vendorsWithSites = vendors.filter(v => v.websiteUrl);
 
   // Fetch OG images in parallel batches
-  const batchSize = 10;
+  const batchSize = 5;
   for (let i = 0; i < vendorsWithSites.length; i += batchSize) {
     if (tracker.allDone() || abortCheck()) break;
 
@@ -803,7 +803,7 @@ async function runCollect(job: CollectJob): Promise<void> {
   const req = job.request;
   const target = req.target || 5;
   const dryRun = req.dryRun ?? false;
-  const concurrency = req.concurrency || 5;
+  const concurrency = req.concurrency || 2;
   const tracker = new CategoryTracker(target);
   const abortCheck = () => !!job.aborted;
 

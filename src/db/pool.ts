@@ -4,9 +4,9 @@ import { ENV } from "../config/env";
 
 export const pool = new Pool({
   connectionString: ENV.DATABASE_URL,
-  max: 5,
+  max: 10,
   idleTimeoutMillis: 10000,
-  connectionTimeoutMillis: 5000,
+  connectionTimeoutMillis: 10000,
 });
 
 pool.on("error", (err) => {

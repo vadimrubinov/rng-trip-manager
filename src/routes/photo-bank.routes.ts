@@ -241,7 +241,7 @@ photoBankRouter.post("/collect", async (req: Request, res: Response) => {
       region,
       target: target || 5,
       dryRun: dryRun ?? false,
-      concurrency: concurrency || 5,
+      concurrency: concurrency || 2,
     };
 
     // Real run — fire and forget, return job ID
