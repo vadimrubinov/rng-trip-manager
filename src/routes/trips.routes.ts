@@ -88,6 +88,7 @@ tripsRouter.post("/generate-and-create", asyncHandler(async (req: Request, res: 
       experienceLevel: plan.project.experienceLevel,
       itinerary: plan.project.itinerary,
       images: plan.project.images,
+      gear: plan.project.gear,
     });
 
     // 3. Set requested status (default is already 'draft' from DB)
@@ -766,3 +767,4 @@ tripsRouter.post("/bot-update-chat", asyncHandler(async (req: Request, res: Resp
     res.status(500).json({ error: "Internal server error" });
   }
 }));
+

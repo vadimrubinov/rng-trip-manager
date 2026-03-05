@@ -185,6 +185,30 @@ export const plannerService = {
       log.warn({ err }, "[Planner] Validation pass failed — using unvalidated plan");
     }
 
+    // ── Pass 6: Gear & Packing ──
+    let gear: { fishing: string[]; clothing: string[]; documents: string[]; essentials: string[] } = {
+      fishing: [], clothing: [], documents: [], essentials: [],
+    };
+    try {
+      const gearInput = JSON.stringify({
+        region: finalMeta.region,
+        country: finalMeta.country,
+        targetSpecies: finalMeta.targetSpecies,
+        tripType: finalMeta.tripType,
+        datesStart: finalMeta.datesStart,
+        datesEnd: finalMeta.datesEnd,
+        experienceLevel: finalMeta.experienceLevel,
+        totalDays: finalMeta.totalDays,
+      });
+      gear = await runPass("trip_plan_gear", gearInput, model, temperature);
+      log.info(
+        { fishing: gear.fishing?.length, clothing: gear.clothing?.length, documents: gear.documents?.length, essentials: gear.essentials?.length },
+        "[Planner] Pass 6 (gear) complete",
+      );
+    } catch (err) {
+      log.warn({ err }, "[Planner] Gear pass failed — using empty gear");
+    }
+
     const elapsed = Date.now() - startTime;
     log.info({ elapsed, days: finalItinerary.length, tasks: finalTasks.length, locations: finalLocations.length }, "[Planner] Multi-pass generation complete");
 
@@ -225,6 +249,7 @@ export const plannerService = {
           accommodation: d.accommodation || null,
         })),
         images,
+        gear,
       },
       tasks: finalTasks.slice(0, 30).map((t: any, i: number): CreateTaskRequest => ({
         type: t.type || "custom",

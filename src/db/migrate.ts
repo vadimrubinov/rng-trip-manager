@@ -290,6 +290,9 @@ ALTER TABLE photo_bank ADD COLUMN IF NOT EXISTS ai_filtered_at TIMESTAMPTZ;
 ALTER TABLE trip_projects ADD COLUMN IF NOT EXISTS chat_platform VARCHAR(20);
 ALTER TABLE trip_projects ADD COLUMN IF NOT EXISTS chat_link TEXT;
 ALTER TABLE trip_projects ADD COLUMN IF NOT EXISTS telegram_group_id BIGINT;
+
+-- v1.9.0: gear packing list
+ALTER TABLE trip_projects ADD COLUMN IF NOT EXISTS gear JSONB DEFAULT '{}';
 `;
 
 const EXPECTED_TABLES = [
@@ -323,3 +326,4 @@ export async function runMigrations(): Promise<void> {
     client.release();
   }
 }
+

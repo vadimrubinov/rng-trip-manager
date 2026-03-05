@@ -28,6 +28,7 @@ export interface TripProjectRow {
   chat_platform?: string;
   chat_link?: string;
   telegram_group_id?: number;
+  gear?: any;
   created_at: string;
   updated_at: string;
 }
@@ -62,6 +63,7 @@ export const tripsService = {
     experienceLevel?: string;
     itinerary?: any;
     images?: any;
+    gear?: any;
   }): Promise<TripProjectRow> {
     // Generate slug from title + random suffix
     const slugBase = data.title
@@ -74,8 +76,8 @@ export const tripsService = {
       `INSERT INTO trip_projects (
         user_id, scout_id, slug, title, description, cover_image_url, region, country, latitude, longitude,
         dates_start, dates_end, target_species, trip_type, budget_min, budget_max,
-        participants_count, experience_level, itinerary, images, status, payment_status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'draft', 'unpaid')
+        participants_count, experience_level, itinerary, images, gear, status, payment_status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, 'draft', 'unpaid')
       RETURNING *`,
       [
         userId, data.scoutId, slug, data.title, data.description, data.coverImageUrl || null,
@@ -85,6 +87,7 @@ export const tripsService = {
         data.tripType, data.budgetMin, data.budgetMax, data.participantsCount,
         data.experienceLevel, JSON.stringify(data.itinerary || {}),
         JSON.stringify(data.images || {}),
+        JSON.stringify(data.gear || {}),
       ]
     );
     if (!row) throw new Error("Failed to create trip project");

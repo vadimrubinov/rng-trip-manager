@@ -109,6 +109,7 @@ export interface CreateTripRequest {
   specialRequirements?: string; templateId?: string;
   itinerary?: ItineraryDay[];
   images?: TripImages;
+  gear?: GearList;
 }
 
 export interface CreateTaskRequest {
@@ -125,6 +126,13 @@ export interface CreateLocationRequest {
   dayNumber?: number; sortOrder?: number;
   vendorRecordId?: string; notes?: string;
   imageUrl?: string;
+}
+
+export interface GearList {
+  fishing: string[];
+  clothing: string[];
+  documents: string[];
+  essentials: string[];
 }
 
 export interface GeneratePlanRequest {
