@@ -276,6 +276,68 @@ async function generateTasks(days: ParsedDay[], model: string): Promise<CreateTa
 
 /* ── Pass E: Meta (programmatic, no LLM) ── */
 
+/* ── Vendor task coverage check (programmatic, no LLM) ── */
+
+function ensureVendorTasks(days: ParsedDay[], tasks: CreateTaskRequest[]): CreateTaskRequest[] {
+  // Collect all vendors from parsed days
+  const vendorDayMap = new Map<string, ParsedDay>(); // lowercase vendor → first day
+  for (const day of days) {
+    for (const vendor of day.vendors) {
+      const key = vendor.toLowerCase().trim();
+      if (key && !vendorDayMap.has(key)) {
+        vendorDayMap.set(key, day);
+      }
+    }
+  }
+
+  if (vendorDayMap.size === 0) return tasks;
+
+  // Collect vendors already covered in tasks
+  const coveredVendors = new Set<string>();
+  for (const task of tasks) {
+    if (task.vendorName) {
+      coveredVendors.add(task.vendorName.toLowerCase().trim());
+    }
+  }
+
+  // Find missing vendors
+  const added: CreateTaskRequest[] = [];
+  let sortOrder = tasks.length;
+
+  for (const [vendorKey, day] of vendorDayMap) {
+    if (coveredVendors.has(vendorKey)) continue;
+
+    sortOrder++;
+    const vendorName = day.vendors.find(v => v.toLowerCase().trim() === vendorKey) || vendorKey;
+    const dateStr = day.date ? ` for ${day.date}` : "";
+
+    // Deadline: 30 days before trip start
+    let deadline: string | undefined;
+    const tripStart = days[0]?.date;
+    if (tripStart) {
+      const d = new Date(tripStart);
+      d.setDate(d.getDate() - 30);
+      deadline = d.toISOString();
+    }
+
+    added.push({
+      type: "booking",
+      title: `Confirm booking with ${vendorName}`,
+      description: `Confirm booking with ${vendorName}${dateStr} (Day ${day.dayNumber}).`,
+      deadline,
+      sortOrder,
+      automationMode: "remind",
+      vendorName,
+    });
+  }
+
+  if (added.length > 0) {
+    log.info({ added: added.map(t => t.vendorName) }, "[ItineraryPlanner] Added missing vendor tasks");
+  }
+
+  return [...tasks, ...added];
+}
+
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
@@ -344,11 +406,14 @@ export const itineraryPlannerService = {
     log.info({ days: enrichedDays.length }, "[ItineraryPlanner] Pass B (enrich) complete");
 
     // Pass C + D: parallel
-    const [locations, tasks] = await Promise.all([
+    const [locations, rawTasks] = await Promise.all([
       extractLocations(daysWithDates, model),
       generateTasks(daysWithDates, model),
     ]);
-    log.info({ locations: locations.length, tasks: tasks.length }, "[ItineraryPlanner] Pass C+D (locations+tasks) complete");
+    log.info({ locations: locations.length, tasks: rawTasks.length }, "[ItineraryPlanner] Pass C+D (locations+tasks) complete");
+
+    // Vendor coverage check (programmatic)
+    const tasks = ensureVendorTasks(daysWithDates, rawTasks);
 
     // Pass E: meta (programmatic)
     const meta = buildProjectMeta(daysWithDates, locations);
