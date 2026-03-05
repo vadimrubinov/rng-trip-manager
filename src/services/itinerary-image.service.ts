@@ -150,7 +150,7 @@ export async function getItineraryImages(days: ParsedDayInput[]): Promise<TripIm
         cover = heroPhotos?.cover ? mapPhotoBankRow(heroPhotos.cover) : null;
       } catch { /* fallthrough to default */ }
     }
-    cover = cover || makeDefault(DEFAULT_PHOTOS.cover[0]);
+    // cover fallback deferred until after dayPhotos (needs regionCache)
 
     // ── Footer ──
     let footer: TripImage | null = null;
@@ -161,7 +161,7 @@ export async function getItineraryImages(days: ParsedDayInput[]): Promise<TripIm
         footer = footerPhotos?.cover ? mapPhotoBankRow(footerPhotos.cover) : null;
       } catch { /* fallthrough */ }
     }
-    footer = footer || makeDefault(DEFAULT_PHOTOS.footer[0]);
+    // footer fallback deferred until after dayPhotos (needs regionCache)
 
     // ── Day photos — per day, per region, with type-based default fallback ──
     const regionCache = new Map<string, Awaited<ReturnType<typeof getPhotosForTrip>>>();
@@ -197,6 +197,15 @@ export async function getItineraryImages(days: ParsedDayInput[]): Promise<TripIm
       nonNullDayPhotos[1] || makeDefault(DEFAULT_PHOTOS.cover[2]),
       nonNullDayPhotos[2] || makeDefault(DEFAULT_PHOTOS.footer[1]),
     ];
+
+    // ── Cover/Footer fallback — use scenery from dayPhotos if Photo Bank had no dedicated cover/footer
+    if (!cover) {
+      cover = nonNullDayPhotos[0] || makeDefault(DEFAULT_PHOTOS.cover[0]);
+    }
+    if (!footer) {
+      const lastDayPhoto = nonNullDayPhotos[nonNullDayPhotos.length - 1];
+      footer = (lastDayPhoto && lastDayPhoto !== cover) ? lastDayPhoto : (nonNullDayPhotos[1] || makeDefault(DEFAULT_PHOTOS.footer[0]));
+    }
 
     // ── Fish photos ──
     const fishPhotos: TripImage[] = [];

@@ -611,6 +611,32 @@ tripsRouter.post("/update", asyncHandler(async (req: Request, res: Response) => 
   }
 }));
 
+tripsRouter.post("/update-privacy", asyncHandler(async (req: Request, res: Response) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return noAuth(res);
+
+    const { id, isPrivate, showParticipantsPublic } = req.body;
+    if (!id) return res.status(400).json({ error: "id required" });
+
+    const project = await tripsService.getById(id);
+    if (!project) return res.status(404).json({ error: "Trip not found" });
+    if (project.user_id !== userId) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    const updated = await tripsService.updatePrivacy(id, {
+      is_private: isPrivate,
+      show_participants_public: showParticipantsPublic,
+    });
+
+    res.json(updated);
+  } catch (e: any) {
+    log.error({ err: e }, "[Trips] UpdatePrivacy");
+    res.status(500).json({ error: "Internal server error" });
+  }
+}));
+
 tripsRouter.post("/delete", asyncHandler(async (req: Request, res: Response) => {
   try {
     const userId = getUserId(req);

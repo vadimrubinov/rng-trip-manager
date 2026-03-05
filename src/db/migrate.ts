@@ -293,6 +293,10 @@ ALTER TABLE trip_projects ADD COLUMN IF NOT EXISTS telegram_group_id BIGINT;
 
 -- v1.9.0: gear packing list
 ALTER TABLE trip_projects ADD COLUMN IF NOT EXISTS gear JSONB DEFAULT '{}';
+
+-- v1.10.0: trip privacy controls
+ALTER TABLE trip_projects ADD COLUMN IF NOT EXISTS is_private BOOLEAN DEFAULT false;
+ALTER TABLE trip_projects ADD COLUMN IF NOT EXISTS show_participants_public BOOLEAN DEFAULT true;
 `;
 
 const EXPECTED_TABLES = [

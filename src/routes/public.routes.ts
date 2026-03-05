@@ -28,6 +28,22 @@ publicRouter.get("/:slug", asyncHandler(async (req: Request, res: Response) => {
       }
     }
 
+    const viewerUserId = (req.query.userId as string) || null;
+
+    // Private trips: only visible to owner and participants
+    if ((project as any).is_private) {
+      if (!viewerUserId) {
+        return res.status(404).json({ error: "Trip not found" });
+      }
+      if (viewerUserId !== project.user_id) {
+        const participants = await participantsService.listByProject(project.id);
+        const isParticipant = participants.some(p => p.user_id === viewerUserId);
+        if (!isParticipant) {
+          return res.status(404).json({ error: "Trip not found" });
+        }
+      }
+    }
+
     const [tasks, locations, participantRows] = await Promise.all([
       tasksService.listByProject(project.id),
       locationsService.listByProject(project.id),
@@ -49,14 +65,20 @@ publicRouter.get("/:slug", asyncHandler(async (req: Request, res: Response) => {
       vendor_record_id: t.vendor_record_id,
     }));
 
-    const publicParticipants = participantRows
-      .filter(p => p.status !== "declined")
-      .map(p => ({
-        id: p.id,
-        name: p.name,
-        role: p.role,
-        status: p.status,
-      }));
+    const isOwnerOrParticipant = viewerUserId === project.user_id ||
+      participantRows.some(p => p.user_id === viewerUserId);
+    const showParticipants = (project as any).show_participants_public !== false || isOwnerOrParticipant;
+
+    const publicParticipants = showParticipants
+      ? participantRows
+          .filter(p => p.status !== "declined")
+          .map(p => ({
+            id: p.id,
+            name: p.name,
+            role: p.role,
+            status: p.status,
+          }))
+      : [];
 
     res.json({
       project: {
@@ -84,6 +106,8 @@ publicRouter.get("/:slug", asyncHandler(async (req: Request, res: Response) => {
         gear: project.gear,
         chat_platform: project.chat_platform,
         chat_link: project.chat_link,
+        is_private: (project as any).is_private || false,
+        show_participants_public: (project as any).show_participants_public !== false,
         created_at: project.created_at,
       },
       tasks: publicTasks,

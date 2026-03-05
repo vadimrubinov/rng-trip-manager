@@ -189,4 +189,31 @@ export const tripsService = {
   async getByTelegramGroupId(groupId: number): Promise<TripProjectRow | null> {
     return queryOne(`SELECT * FROM trip_projects WHERE telegram_group_id = $1`, [groupId]);
   },
+
+  async updatePrivacy(
+    projectId: string,
+    data: { is_private?: boolean; show_participants_public?: boolean }
+  ): Promise<TripProjectRow | null> {
+    const sets: string[] = [];
+    const params: any[] = [projectId];
+    let i = 2;
+
+    if (data.is_private !== undefined) {
+      sets.push(`is_private = $${i}`);
+      params.push(data.is_private);
+      i++;
+    }
+    if (data.show_participants_public !== undefined) {
+      sets.push(`show_participants_public = $${i}`);
+      params.push(data.show_participants_public);
+      i++;
+    }
+
+    if (sets.length === 0) return null;
+
+    return queryOne(
+      `UPDATE trip_projects SET ${sets.join(", ")} WHERE id = $1 RETURNING *`,
+      params
+    );
+  },
 };
