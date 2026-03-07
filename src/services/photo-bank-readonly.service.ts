@@ -2,7 +2,15 @@ import { pool } from "../db/pool";
 
 // ── Types (subset for trip landing page) ──
 
-export type PhotoCategory = "hero" | "band" | "action" | "scenery" | "fish";
+export type PhotoCategory = "hero" | "landscape" | "square" | "portrait";
+
+// Transition mapping: new name → [new, old] for backward compat during migration
+const CATEGORY_COMPAT: Record<PhotoCategory, string[]> = {
+  hero:      ["hero"],
+  landscape: ["landscape", "scenery"],
+  square:    ["square", "action"],
+  portrait:  ["portrait", "fish"],
+};
 
 export interface PhotoBankRow {
   id: string;
@@ -69,32 +77,33 @@ export async function getPhotosForTrip(
   cover: PhotoBankRow | null;
   heroes: PhotoBankRow[];
   bands: PhotoBankRow[];
-  action: PhotoBankRow[];
-  scenery: PhotoBankRow[];
-  fish: PhotoBankRow[];
+  square: PhotoBankRow[];
+  landscape: PhotoBankRow[];
+  portrait: PhotoBankRow[];
 }> {
   const baseCondition = `approved = TRUE`;
 
   async function findByCategory(category: PhotoCategory, limit: number, species?: string): Promise<PhotoBankRow[]> {
     const fetchLimit = tripType ? Math.max(limit * 5, 20) : limit;
+    const cats = CATEGORY_COMPAT[category];
 
     let { rows } = await pool.query(
       `SELECT * FROM photo_bank
-       WHERE ${baseCondition} AND category = $1 AND LOWER(region) = LOWER($2)
+       WHERE ${baseCondition} AND category = ANY($1::text[]) AND LOWER(region) = LOWER($2)
        ${species ? "AND LOWER(species) = LOWER($3)" : ""}
        ORDER BY ai_score DESC NULLS LAST, created_at DESC
        LIMIT $${species ? 4 : 3}`,
-      species ? [category, region, species, fetchLimit] : [category, region, fetchLimit],
+      species ? [cats, region, species, fetchLimit] : [cats, region, fetchLimit],
     );
 
     if (rows.length === 0 && country) {
       const res = await pool.query(
         `SELECT * FROM photo_bank
-         WHERE ${baseCondition} AND category = $1 AND LOWER(country) = LOWER($2)
+         WHERE ${baseCondition} AND category = ANY($1::text[]) AND LOWER(country) = LOWER($2)
          ${species ? "AND LOWER(species) = LOWER($3)" : ""}
          ORDER BY ai_score DESC NULLS LAST, created_at DESC
          LIMIT $${species ? 4 : 3}`,
-        species ? [category, country, species, fetchLimit] : [category, country, fetchLimit],
+        species ? [cats, country, species, fetchLimit] : [cats, country, fetchLimit],
       );
       rows = res.rows;
     }
@@ -102,10 +111,10 @@ export async function getPhotosForTrip(
     if (rows.length === 0) {
       const res = await pool.query(
         `SELECT * FROM photo_bank
-         WHERE ${baseCondition} AND category = $1
+         WHERE ${baseCondition} AND category = ANY($1::text[])
          ORDER BY ai_score DESC NULLS LAST, created_at DESC
          LIMIT $2`,
-        [category, fetchLimit],
+        [cats, fetchLimit],
       );
       rows = res.rows;
     }
@@ -125,32 +134,31 @@ export async function getPhotosForTrip(
     return rows;
   }
 
-  const sceneryLimit = Math.max(dayCount || 3, 5) + 1;
+  const landscapeLimit = Math.max(dayCount || 3, 5) + 1;
 
-  const [heroes, bands, actions, sceneries] = await Promise.all([
+  const [heroes, squares, landscapes] = await Promise.all([
     findByCategory("hero", 2),
-    findByCategory("band", 1),
-    findByCategory("action", 3),
-    findByCategory("scenery", sceneryLimit),
+    findByCategory("square", 3),
+    findByCategory("landscape", landscapeLimit),
   ]);
 
-  let fishPhotos: PhotoBankRow[] = [];
+  let portraits: PhotoBankRow[] = [];
   if (targetSpecies?.length) {
     for (const sp of targetSpecies.slice(0, 3)) {
-      const photos = await findByCategory("fish", 1, sp);
-      fishPhotos.push(...photos);
+      const photos = await findByCategory("portrait", 1, sp);
+      portraits.push(...photos);
     }
   }
-  if (fishPhotos.length === 0) {
-    fishPhotos = await findByCategory("fish", 2);
+  if (portraits.length === 0) {
+    portraits = await findByCategory("portrait", 2);
   }
 
   return {
     cover: heroes[0] || null,
     heroes,
-    bands,
-    action: actions,
-    scenery: sceneries,
-    fish: fishPhotos,
+    bands: [],
+    square: squares,
+    landscape: landscapes,
+    portrait: portraits,
   };
 }

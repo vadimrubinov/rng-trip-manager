@@ -186,8 +186,8 @@ export async function getItineraryImages(days: ParsedDayInput[]): Promise<TripIm
 
       const cached = regionCache.get(region)!;
       const usedCount = dayPhotos.filter(Boolean).length;
-      const sceneryPhoto = cached.scenery[usedCount % Math.max(cached.scenery.length, 1)];
-      dayPhotos.push(sceneryPhoto ? mapPhotoBankRow(sceneryPhoto) : defaultDayPhoto(day.type));
+      const landscapePhoto = cached.landscape[usedCount % Math.max(cached.landscape.length, 1)];
+      dayPhotos.push(landscapePhoto ? mapPhotoBankRow(landscapePhoto) : defaultDayPhoto(day.type));
     }
 
     // ── Bands ──
@@ -212,7 +212,7 @@ export async function getItineraryImages(days: ParsedDayInput[]): Promise<TripIm
     if (allSpecies.length > 0 && mainFishingRegion) {
       try {
         const fishData = await getPhotosForTrip(mainFishingRegion, days[0]?.country, allSpecies, undefined, 1);
-        for (const fp of fishData.fish) fishPhotos.push(mapPhotoBankRow(fp));
+        for (const fp of fishData.portrait) fishPhotos.push(mapPhotoBankRow(fp));
       } catch { /* fallthrough */ }
     }
     if (fishPhotos.length === 0) fishPhotos.push(makeDefault(DEFAULT_PHOTOS.fish));
@@ -222,7 +222,7 @@ export async function getItineraryImages(days: ParsedDayInput[]): Promise<TripIm
     if (mainFishingRegion) {
       try {
         const actionData = await getPhotosForTrip(mainFishingRegion, days[0]?.country, undefined, "fishing", 1);
-        actionBand = actionData?.action?.[0] ? mapPhotoBankRow(actionData.action[0]) : null;
+        actionBand = actionData?.square?.[0] ? mapPhotoBankRow(actionData.square[0]) : null;
       } catch { /* fallthrough */ }
     }
     actionBand = actionBand || makeDefault(DEFAULT_PHOTOS.actionBand);
@@ -232,7 +232,7 @@ export async function getItineraryImages(days: ParsedDayInput[]): Promise<TripIm
     if (mainFishingRegion) {
       try {
         const gearData = await getPhotosForTrip(mainFishingRegion, days[0]?.country, undefined, undefined, 1);
-        gearBand = gearData?.bands?.[0] ? mapPhotoBankRow(gearData.bands[0]) : null;
+        gearBand = gearData?.square?.[0] ? mapPhotoBankRow(gearData.square[0]) : null;
       } catch { /* fallthrough */ }
     }
     gearBand = gearBand || makeDefault(DEFAULT_PHOTOS.gearBand);
@@ -244,8 +244,8 @@ export async function getItineraryImages(days: ParsedDayInput[]): Promise<TripIm
       try {
         const lastData = regionCache.get(lastRegion)
           || await getPhotosForTrip(lastRegion, lastDay.country, undefined, undefined, 1);
-        const lastScenery = lastData.scenery[lastData.scenery.length - 1];
-        seasonBand = lastScenery ? mapPhotoBankRow(lastScenery) : null;
+        const lastLandscape = lastData.landscape[lastData.landscape.length - 1];
+        seasonBand = lastLandscape ? mapPhotoBankRow(lastLandscape) : null;
       } catch { /* fallthrough */ }
     }
     seasonBand = seasonBand || makeDefault(DEFAULT_PHOTOS.seasonBand);

@@ -199,7 +199,7 @@ export async function getTripImages(
         const cover = bankPhotos.cover;
 
         const hasCover = !!cover;
-        const hasEnoughPhotos = bankPhotos.action.length + bankPhotos.scenery.length + bankPhotos.bands.length >= 2;
+        const hasEnoughPhotos = bankPhotos.square.length + bankPhotos.landscape.length + bankPhotos.bands.length >= 2;
 
         if (hasCover || hasEnoughPhotos) {
           // ── Build expanded photo set from bank ──
@@ -207,35 +207,35 @@ export async function getTripImages(
 
           // Footer — second hero different from cover, or fallback to action/scenery
           const footerRow = bankPhotos.heroes.find(h => h.id !== cover?.id)
-            || bankPhotos.action[1]
-            || bankPhotos.scenery[bankPhotos.scenery.length - 1]
+            || bankPhotos.square[1]
+            || bankPhotos.landscape[bankPhotos.landscape.length - 1]
             || null;
           const footer = footerRow ? mapPhotoBankRow(footerRow, "large2x") : null;
 
-          // Action band — first action photo
-          const actionBand = bankPhotos.action[0] ? mapPhotoBankRow(bankPhotos.action[0], "large") : null;
+          // Square band — first square photo (used as action band on landing)
+          const actionBand = bankPhotos.square[0] ? mapPhotoBankRow(bankPhotos.square[0], "large") : null;
 
           // Gear band — first band photo
           const gearBand = bankPhotos.bands[0] ? mapPhotoBankRow(bankPhotos.bands[0], "large") : null;
 
           // Day photos — scenery, one per day
           const dc = dayCount || 0;
-          const sceneryForDays = bankPhotos.scenery.slice(0, dc);
+          const landscapeForDays = bankPhotos.landscape.slice(0, dc);
           const dayPhotos: (TripImage | null)[] = Array.from({ length: dc }, (_, i) =>
-            sceneryForDays[i] ? mapPhotoBankRow(sceneryForDays[i], "large") : null
+            landscapeForDays[i] ? mapPhotoBankRow(landscapeForDays[i], "large") : null
           );
 
           // Season band — next scenery after day photos
-          const seasonRow = bankPhotos.scenery[sceneryForDays.length] || null;
+          const seasonRow = bankPhotos.landscape[landscapeForDays.length] || null;
           const seasonBand = seasonRow ? mapPhotoBankRow(seasonRow, "large") : null;
 
           // Fish photos
-          const fishPhotos = bankPhotos.fish.map(f => mapPhotoBankRow(f, "large"));
+          const fishPhotos = bankPhotos.portrait.map(f => mapPhotoBankRow(f, "large"));
 
           // Bands for backward compatibility
           const bandCandidates = [
-            ...bankPhotos.action,
-            ...bankPhotos.scenery,
+            ...bankPhotos.square,
+            ...bankPhotos.landscape,
             ...bankPhotos.bands,
           ].filter(Boolean) as PhotoBankRow[];
           const bands: (TripImage | null)[] = [
@@ -245,7 +245,7 @@ export async function getTripImages(
           ];
 
           log.info(
-            { region, country, tripType, source: "photo_bank", dayPhotos: dayPhotos.filter(Boolean).length, fish: fishPhotos.length },
+            { region, country, tripType, source: "photo_bank", dayPhotos: dayPhotos.filter(Boolean).length, portrait: fishPhotos.length },
             "[ImageService] Serving expanded set from Photo Bank",
           );
 
