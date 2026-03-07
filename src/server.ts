@@ -64,6 +64,25 @@ async function cleanupDrafts() {
   } catch (error: any) {
     log.error({ err: error }, "cron.draft_cleanup.error");
   }
+
+  // v2.0.0: Stuck generation cleanup
+  try {
+    const stuck = await pool.query(
+      `UPDATE trip_projects
+       SET generation_status = 'failed', updated_at = NOW()
+       WHERE generation_status = 'generating'
+         AND updated_at < NOW() - INTERVAL '10 minutes'
+       RETURNING id, slug`
+    );
+    if (stuck.rowCount && stuck.rowCount > 0) {
+      log.info(
+        { count: stuck.rowCount, slugs: stuck.rows.map((r: any) => r.slug) },
+        "cron.stuck_generation_cleanup.marked_failed"
+      );
+    }
+  } catch (error: any) {
+    log.error({ err: error }, "cron.stuck_generation_cleanup.error");
+  }
 }
 
 async function main() {

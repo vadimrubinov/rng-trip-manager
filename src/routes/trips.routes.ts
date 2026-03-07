@@ -8,6 +8,9 @@ import { participantsService } from "../services/participants.service";
 import { eventsService } from "../services/events.service";
 import { plannerService } from "../services/planner.service";
 import { itineraryPlannerService } from "../services/itinerary-planner.service";
+import { pipelineService } from "../services/pipeline.service";
+import { pipelineEmitter } from "../services/pipeline/emitter";
+import { TripContext, TripSource } from "../services/pipeline/types";
 import { emailService } from "../services/email/email.service";
 import { nudgeService } from "../services/nudge/nudge.service";
 import { enqueueEnrichment } from "../services/enrichment.service";
@@ -62,6 +65,51 @@ tripsRouter.post("/generate-and-create", asyncHandler(async (req: Request, res: 
     if (!scoutId && !effectiveTripDetails && !rawItinerary) {
       return res.status(400).json({ error: "scoutId, tripDetails/brief, or rawItinerary required" });
     }
+
+    // ── Feature flag: USE_PIPELINE ──
+    const usePipeline = process.env.USE_PIPELINE === "true";
+
+    if (usePipeline) {
+      // NEW: Unified pipeline — returns slug immediately, generates async
+      const source: TripSource = rawItinerary ? "raw_itinerary" : (scoutId ? "scout" : "manual");
+
+      // Build TripContext
+      const context: TripContext = {
+        source,
+        rawItinerary: rawItinerary || undefined,
+        scoutId: scoutId || undefined,
+        tripDetails: effectiveTripDetails ? (typeof effectiveTripDetails === "string" ? JSON.parse(effectiveTripDetails) : effectiveTripDetails) : undefined,
+      };
+
+      // If scout-based, fetch brief + transcript
+      if (scoutId) {
+        try {
+          const { airtable } = await import("../lib/airtable");
+          const scout = await airtable.getScout(scoutId);
+          if (scout?.brief) context.scoutBrief = scout.brief;
+          if (scout?.transcript) context.transcript = scout.transcript;
+        } catch (e: any) {
+          log.warn({ err: e, scoutId }, "[Pipeline] Failed to fetch scout");
+        }
+      }
+
+      // If brief is a string (from CreateTripModal), use it as scoutBrief
+      if (typeof effectiveTripDetails === "string" && !context.scoutBrief) {
+        context.scoutBrief = effectiveTripDetails;
+      }
+
+      const { slug, projectId } = await pipelineService.startGeneration(userId, context, {
+        scoutId,
+        organizerEmail,
+        organizerName,
+        requestedStatus,
+      });
+
+      const tripUrl = `https://bitescout.com/trip/${slug}`;
+      return res.status(201).json({ slug, projectId, tripUrl, streaming: true });
+    }
+
+    // ── OLD FLOW (fallback when USE_PIPELINE=false) ──
 
     // 1. Generate plan
     const plan = rawItinerary
@@ -132,6 +180,62 @@ tripsRouter.post("/generate-and-create", asyncHandler(async (req: Request, res: 
     log.error({ err: e }, "[Trips] GenerateAndCreate");
     res.status(500).json({ error: e?.message || "Internal server error" });
   }
+}));
+
+// ── SSE Stream endpoint ──
+tripsRouter.get("/stream/:projectId", asyncHandler(async (req: Request, res: Response) => {
+  const { projectId } = req.params;
+  const userId = req.query.userId as string;
+
+  if (!userId) return res.status(401).json({ error: "userId required" });
+
+  // Auth: verify project belongs to user
+  const project = await tripsService.getById(projectId);
+  if (!project) return res.status(404).json({ error: "Not found" });
+  if (project.user_id !== userId) return res.status(403).json({ error: "Forbidden" });
+
+  // SSE headers
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+    "X-Accel-Buffering": "no",
+  });
+
+  // Send current state immediately (for reconnect)
+  const blocks = (project as any).generation_blocks;
+  if (blocks && typeof blocks === "object") {
+    for (const [block, done] of Object.entries(blocks)) {
+      if (done) {
+        res.write(`data: ${JSON.stringify({ block })}\n\n`);
+      }
+    }
+  }
+
+  // Already complete or failed? Send status and close
+  const genStatus = (project as any).generation_status;
+  if (genStatus === "complete" || genStatus === "failed") {
+    res.write(`data: ${JSON.stringify({ status: genStatus })}\n\n`);
+    return res.end();
+  }
+
+  // Subscribe to new events
+  const listener = (event: any) => {
+    try {
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+      if (event.status === "complete" || event.status === "failed") {
+        res.end();
+      }
+    } catch {
+      // Client disconnected
+    }
+  };
+  pipelineEmitter.on(projectId, listener);
+
+  // Cleanup on disconnect
+  req.on("close", () => {
+    pipelineEmitter.off(projectId, listener);
+  });
 }));
 
 tripsRouter.post("/generate-plan", asyncHandler(async (req: Request, res: Response) => {
@@ -793,4 +897,3 @@ tripsRouter.post("/bot-update-chat", asyncHandler(async (req: Request, res: Resp
     res.status(500).json({ error: "Internal server error" });
   }
 }));
-

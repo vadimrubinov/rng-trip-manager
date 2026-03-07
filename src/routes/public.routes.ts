@@ -20,8 +20,8 @@ publicRouter.get("/:slug", asyncHandler(async (req: Request, res: Response) => {
       return res.status(404).json({ error: "Trip not found" });
     }
 
-    // Draft and frozen trips: only visible to owner
-    if (project.status === "draft" || project.status === "frozen") {
+    // Draft, frozen, and generating trips: only visible to owner
+    if (project.status === "draft" || project.status === "frozen" || project.status === "generating") {
       const userId = req.query.userId as string;
       if (!userId || userId !== project.user_id) {
         return res.status(404).json({ error: "Trip not found" });
@@ -104,6 +104,10 @@ publicRouter.get("/:slug", asyncHandler(async (req: Request, res: Response) => {
         itinerary: project.itinerary,
         images: project.images,
         gear: project.gear,
+        season: (project as any).season || {},
+        budget_breakdown: (project as any).budget_breakdown || [],
+        generation_status: (project as any).generation_status || null,
+        generation_blocks: (project as any).generation_blocks || {},
         chat_platform: project.chat_platform,
         chat_link: project.chat_link,
         is_private: (project as any).is_private || false,

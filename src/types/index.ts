@@ -151,3 +151,5 @@ export interface GeneratedPlan {
   locations: CreateLocationRequest[];
 }
 
+// v2.0.0: Pipeline types (re-exported for convenience)
+export type { TripContext, TripSource, HeroData, SeasonData, BudgetBreakdown, ImageSet, GearData as PipelineGearData, GenerationBlocks, BlockName } from "../services/pipeline/types";

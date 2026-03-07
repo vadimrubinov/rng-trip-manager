@@ -297,6 +297,13 @@ ALTER TABLE trip_projects ADD COLUMN IF NOT EXISTS gear JSONB DEFAULT '{}';
 -- v1.10.0: trip privacy controls
 ALTER TABLE trip_projects ADD COLUMN IF NOT EXISTS is_private BOOLEAN DEFAULT false;
 ALTER TABLE trip_projects ADD COLUMN IF NOT EXISTS show_participants_public BOOLEAN DEFAULT true;
+
+-- v2.0.0: Unified pipeline
+-- NOTE: overview writes to existing description column — no new column needed
+ALTER TABLE trip_projects ADD COLUMN IF NOT EXISTS season JSONB DEFAULT '{}';
+ALTER TABLE trip_projects ADD COLUMN IF NOT EXISTS budget_breakdown JSONB DEFAULT '[]';
+ALTER TABLE trip_projects ADD COLUMN IF NOT EXISTS generation_status VARCHAR(30) DEFAULT NULL;
+ALTER TABLE trip_projects ADD COLUMN IF NOT EXISTS generation_blocks JSONB DEFAULT '{}';
 `;
 
 const EXPECTED_TABLES = [
@@ -330,4 +337,3 @@ export async function runMigrations(): Promise<void> {
     client.release();
   }
 }
-
